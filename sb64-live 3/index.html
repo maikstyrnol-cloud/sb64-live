@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -716,11 +717,14 @@ const todayStr = new Date().toISOString().slice(0,10);
 const DM = {'2026-06-08':'d08','2026-06-09':'d09','2026-06-10':'d10','2026-06-11':'d11',
             '2026-06-12':'d12','2026-06-13':'d13','2026-06-14':'d14','2026-06-15':'d15',
             '2026-06-16':'d16','2026-06-17':'d17','2026-06-18':'d18'};
-if (DM[todayStr]) showDay(DM[todayStr]);
-else {
-  // Before conference: show roundup
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('view-roundup').classList.add('active');
+// If today is a conference day, show it. Otherwise show the first upcoming day (or d08 before conf starts).
+if (DM[todayStr]) {
+  showDay(DM[todayStr]);
+} else {
+  // Find the next upcoming conference day, or fall back to d08
+  const upcoming = CONF_DATES.find(d => d >= todayStr);
+  const fallback = upcoming ? DM[upcoming] : 'd08';
+  showDay(fallback || 'd08');
 }
 
 tickTs();
