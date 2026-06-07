@@ -1,0 +1,77 @@
+HOW TO DEPLOY YOUR LIVE SB64 DASHBOARD
+=======================================
+Total time: about 10 minutes. No coding needed.
+
+WHAT YOU HAVE
+-------------
+This folder contains 3 files:
+  - index.html        (the dashboard page)
+  - api/schedule.js   (the live fetch engine)
+  - vercel.json       (tells Vercel how to run it)
+
+STEP 1 — Go to Vercel
+-----------------------
+Open your browser and go to:
+  https://vercel.com
+
+Click "Sign Up" → choose "Continue with Email"
+Enter your email, verify it, done.
+
+STEP 2 — Deploy by drag and drop
+----------------------------------
+1. After signing up, you'll see a dashboard.
+2. Click "Add New" → "Project"
+3. On the next screen, look for "Or deploy from your local files" 
+   and click "Browse" or drag the entire "sb64-live" folder 
+   onto the upload area.
+   
+   (If you don't see drag-and-drop, click "Import" and select the folder)
+
+4. Leave all settings as they are — don't change anything.
+5. Click "Deploy"
+6. Wait about 30 seconds.
+7. Vercel gives you a URL like: https://sb64-live-abc123.vercel.app
+
+STEP 3 — Open your live dashboard
+------------------------------------
+Click the URL Vercel gives you. 
+Bookmark it. That's your live dashboard.
+
+It will:
+- Auto-refresh every 3 minutes
+- Pull new side events from the UNFCCC SEORS database
+- Highlight forest-relevant new additions in green
+- Show you the current day automatically
+
+STEP 4 — Optional: give it a nicer URL
+-----------------------------------------
+In Vercel → your project → Settings → Domains
+You can add a free custom subdomain like:
+  sb64-forest.vercel.app
+(just pick any name you like, it's free)
+
+TROUBLESHOOTING
+---------------
+- "Fetch failed" in the status bar: SEORS is temporarily unreachable. 
+  The pre-loaded data still works. It will auto-retry in 3 minutes.
+
+- Page looks broken: Try a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)
+
+- Want to re-deploy with updates: Just drag the folder again in Vercel.
+
+WHAT UPDATES LIVE
+-----------------
+✓ New side events added to SEORS (the official UNFCCC side events database)
+✓ Forest-relevant ones highlighted automatically
+✓ New-event badges (🆕) appear on the relevant day
+
+WHAT DOES NOT UPDATE LIVE
+--------------------------
+✗ The negotiations schedule (it's JavaScript-rendered by UNFCCC,
+  no public data feed exists). Use the "Negotiations Tracker" tab
+  which links you directly to the live UNFCCC page for each day.
+
+QUESTIONS?
+----------
+Ask Claude to update the HTML with new events or fix anything.
+Just paste the updated files into Vercel again.
