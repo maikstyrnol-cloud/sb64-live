@@ -1,0 +1,735 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SB64 Forest Observer — Live</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --fsc: #1b4332; --fsc-mid: #2d6a4f; --fsc-light: #40916c; --fsc-pale: #d8f3dc;
+  --gold: #c8961c;
+  --bg: #f4f4f2; --surface: #fff; --border: #e4e4df; --border-mid: #d0d0c8;
+  --text: #1a1a18; --text-mid: #4a4a46; --text-light: #8a8a84;
+  --blue: #1d4ed8; --purple: #6d28d9; --teal: #065f46; --amber: #92400e;
+  --blue-bg: #eff6ff; --blue-br: #bfdbfe;
+  --purple-bg: #f5f3ff; --purple-br: #ddd6fe;
+  --teal-bg: #ecfdf5; --teal-br: #a7f3d0;
+  --amber-bg: #fffbeb; --amber-br: #fde68a;
+  --red-bg: #fef2f2; --red-br: #fecaca; --red: #dc2626;
+  --r: 6px;
+}
+*,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+a { color: inherit; }
+button { font-family: inherit; cursor: pointer; }
+
+/* ── HEADER ── */
+.hdr { background: var(--fsc); position: sticky; top: 0; z-index: 300; box-shadow: 0 2px 8px rgba(0,0,0,0.22); }
+.hdr-top { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 2rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+.logo { flex-shrink: 0; width: 38px; height: 38px; background: #fff; border-radius: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.logo-main { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 0.95rem; color: var(--fsc); line-height: 1; }
+.logo-sub { font-size: 0.38rem; letter-spacing: 0.14em; font-weight: 600; color: var(--fsc-mid); margin-top: 1px; }
+.hdr-titles { flex: 1; }
+.hdr-title { font-family: 'Playfair Display', serif; font-size: 1.08rem; font-weight: 700; color: #fff; line-height: 1.1; }
+.hdr-sub { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; color: rgba(255,255,255,0.45); letter-spacing: 0.1em; margin-top: 0.15rem; text-transform: uppercase; }
+.hdr-right { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.pulse { width: 6px; height: 6px; background: #4ade80; border-radius: 50%; animation: pulse 2s infinite; display: inline-block; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.45;transform:scale(0.62)} }
+.live-dot { display: flex; align-items: center; gap: 0.3rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; color: #fff; border: 1px solid rgba(255,255,255,0.3); padding: 0.22rem 0.5rem; border-radius: 2px; }
+.fetch-status { font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; color: rgba(255,255,255,0.4); border: 1px solid rgba(255,255,255,0.12); padding: 0.22rem 0.5rem; border-radius: 2px; white-space: nowrap; }
+.fetch-status.ok  { color: #4ade80; border-color: rgba(74,222,128,0.3); }
+.fetch-status.err { color: #f87171; border-color: rgba(248,113,113,0.3); }
+
+/* ── MAIN TABS (Schedule / Negotiations) ── */
+.main-tabs { display: flex; padding: 0 2rem; }
+.main-tab { padding: 0.5rem 0.9rem; font-size: 0.75rem; font-weight: 500; color: rgba(255,255,255,0.45); background: none; border: none; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+.main-tab:hover { color: rgba(255,255,255,0.8); }
+.main-tab.active { color: #fff; border-bottom-color: #4ade80; }
+
+/* ── DAY STRIP ── */
+.day-strip-wrap { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 89px; z-index: 200; }
+.day-strip { display: flex; align-items: stretch; overflow-x: auto; padding: 0 2rem; gap: 0; scrollbar-width: none; }
+.day-strip::-webkit-scrollbar { display: none; }
+.day-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; padding: 0.5rem 0.9rem; border: none; background: none; border-bottom: 2px solid transparent; color: var(--text-light); transition: all 0.12s; white-space: nowrap; flex-shrink: 0; min-width: 62px; }
+.day-btn:hover { color: var(--text); background: var(--bg); }
+.day-btn.active { color: var(--fsc); border-bottom-color: var(--fsc); font-weight: 600; }
+.day-btn.closed { opacity: 0.35; }
+.day-btn .dn { font-family: 'Playfair Display', serif; font-size: 1.15rem; font-weight: 700; line-height: 1; }
+.day-btn .dw { font-size: 0.62rem; color: inherit; }
+.day-btn .dpips { display: flex; gap: 2px; margin-top: 2px; justify-content: center; }
+.pip { width: 5px; height: 5px; border-radius: 50%; }
+.pip-n { background: var(--teal); }
+.pip-s { background: var(--purple); }
+.pip-o { background: var(--blue); }
+.pip-star { background: var(--gold); }
+
+/* filter chips — shown below day strip */
+.filter-row { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0.4rem 2rem; display: flex; align-items: center; gap: 0.35rem; position: sticky; top: 137px; z-index: 190; }
+.chip { padding: 0.18rem 0.62rem; border-radius: 20px; border: 1px solid var(--border-mid); background: transparent; font-size: 0.7rem; font-weight: 500; color: var(--text-mid); transition: all 0.12s; white-space: nowrap; }
+.chip:hover { border-color: var(--fsc-light); color: var(--fsc); }
+.chip.active { background: var(--fsc); border-color: var(--fsc); color: #fff; }
+.fr-spacer { flex: 1; }
+.fr-ts { font-family: 'IBM Plex Mono', monospace; font-size: 0.59rem; color: var(--text-light); }
+
+/* ── PAGE CONTENT ── */
+.page { max-width: 900px; margin: 0 auto; padding: 1.75rem 2rem 3rem; }
+.view { display: none; }
+.view.active { display: block; }
+
+/* ── DAY HEADER ── */
+.day-hd { margin-bottom: 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+.day-hd h2 { font-family: 'Playfair Display', serif; font-size: 1.5rem; font-weight: 700; line-height: 1; }
+.day-hd-sub { font-size: 0.76rem; color: var(--text-light); }
+.badge-pill { font-size: 0.62rem; font-weight: 600; padding: 0.17rem 0.52rem; border-radius: 3px; background: var(--fsc-pale); color: var(--fsc); border: 1px solid #b7e4c7; margin-left: auto; }
+
+/* ── INFO BAR ── */
+.ibar { border-radius: var(--r); padding: 0.55rem 0.85rem; font-size: 0.75rem; margin-bottom: 0.85rem; line-height: 1.45; display: flex; align-items: flex-start; gap: 0.5rem; }
+.ibar a { text-decoration: underline; }
+.ibar.blue { background: var(--blue-bg); border: 1px solid var(--blue-br); color: #1e40af; }
+.ibar.green { background: var(--fsc-pale); border: 1px solid #b7e4c7; color: var(--fsc); }
+.ibar.teal { background: var(--teal-bg); border: 1px solid var(--teal-br); color: #064e3b; }
+.ibar.red { background: var(--red-bg); border: 1px solid var(--red-br); color: var(--red); }
+
+/* ── SECTION HEAD ── */
+.sh { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-light); margin: 1.25rem 0 0.55rem; display: flex; align-items: center; gap: 0.5rem; }
+.sh::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── CARDS ── */
+.cards { display: flex; flex-direction: column; gap: 0.4rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid transparent; border-radius: var(--r); padding: 0.72rem 1rem; cursor: pointer; transition: border-color 0.12s, box-shadow 0.12s; }
+.card:hover { border-color: var(--border-mid); box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.card.t-online  { border-left-color: var(--blue); }
+.card.t-side    { border-left-color: var(--purple); }
+.card.t-nego    { border-left-color: var(--teal); }
+.card.t-mandate { border-left-color: var(--gold); }
+.card.star      { border-left-color: var(--gold); }
+.card.live-new  { border-color: #4ade80; box-shadow: 0 0 0 2px rgba(74,222,128,0.15); }
+
+.cmeta { display: flex; align-items: center; gap: 0.38rem; margin-bottom: 0.26rem; flex-wrap: wrap; }
+.ctime { font-family: 'IBM Plex Mono', monospace; font-size: 0.63rem; color: var(--text-light); background: var(--bg); padding: 0.06rem 0.36rem; border-radius: 3px; white-space: nowrap; }
+.ctag { font-size: 0.59rem; font-weight: 600; padding: 0.08rem 0.42rem; border-radius: 20px; white-space: nowrap; }
+.ct-online  { background: var(--blue-bg);   color: var(--blue);   border: 1px solid var(--blue-br); }
+.ct-side    { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-br); }
+.ct-nego    { background: var(--teal-bg);   color: var(--teal);   border: 1px solid var(--teal-br); }
+.ct-mandate { background: var(--amber-bg);  color: var(--amber);  border: 1px solid var(--amber-br); }
+.ct-star    { background: #fef9c3; color: #92400e; border: 1px solid #fde68a; }
+.ct-live    { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.ct-new     { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.croom { font-size: 0.62rem; color: var(--text-light); margin-left: auto; font-family: 'IBM Plex Mono', monospace; }
+
+.ctitle { font-size: 0.86rem; font-weight: 500; color: var(--text); line-height: 1.32; }
+.card.star .ctitle { font-weight: 600; }
+
+.cbody { font-size: 0.76rem; color: var(--text-mid); line-height: 1.55; margin-top: 0.38rem; display: none; }
+.card.open .cbody { display: block; }
+.corgs { font-size: 0.67rem; color: var(--text-light); margin-top: 0.28rem; font-style: italic; }
+.wcbtn { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.42rem; font-size: 0.68rem; font-weight: 500; color: var(--blue); text-decoration: none; border: 1px solid var(--blue-br); background: var(--blue-bg); padding: 0.18rem 0.52rem; border-radius: 4px; transition: background 0.12s; }
+.wcbtn:hover { background: #dbeafe; }
+
+/* ── ROUNDUP TABLE ── */
+.rtbl { width: 100%; border-collapse: collapse; margin-bottom: 1.25rem; }
+.rtbl th { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); text-align: left; padding: 0.36rem 0.75rem; border-bottom: 2px solid var(--border); background: var(--bg); }
+.rtbl td { font-size: 0.79rem; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--text-mid); line-height: 1.45; }
+.rtbl tr:hover td { background: #fafaf8; }
+.rtbl td:first-child { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; color: var(--text-light); white-space: nowrap; font-weight: 500; width: 70px; }
+.rtbl td strong { color: var(--text); font-weight: 600; }
+.hot { color: var(--fsc); font-weight: 600; }
+
+/* ── NEGOTIATIONS VIEW ── */
+.nego-intro { background: var(--teal-bg); border: 1px solid var(--teal-br); border-radius: var(--r); padding: 0.7rem 0.95rem; font-size: 0.77rem; color: #064e3b; margin-bottom: 1.1rem; line-height: 1.55; }
+.nego-intro a { color: var(--fsc); font-weight: 500; }
+
+.live-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; margin-bottom: 1.4rem; }
+.lph { background: var(--fsc); display: flex; align-items: center; gap: 0.7rem; padding: 0.55rem 1rem; flex-wrap: wrap; }
+.lph h3 { font-size: 0.73rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.35rem; font-family: 'IBM Plex Mono', monospace; }
+.dnav { display: flex; align-items: center; gap: 0.3rem; margin-left: auto; }
+.narr { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); color: #fff; padding: 0.17rem 0.48rem; border-radius: 3px; font-size: 0.72rem; transition: background 0.12s; }
+.narr:hover { background: rgba(255,255,255,0.22); }
+.ndlbl { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: rgba(255,255,255,0.9); min-width: 108px; text-align: center; }
+.rlbtn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.75); padding: 0.17rem 0.58rem; border-radius: 3px; font-size: 0.67rem; font-family: 'IBM Plex Mono', monospace; transition: background 0.12s; }
+.rlbtn:hover { background: rgba(255,255,255,0.18); }
+.lbody { padding: 1.25rem 1.5rem; background: #f0fdf4; display: flex; flex-direction: column; align-items: center; gap: 0.65rem; text-align: center; }
+.lbody p { font-size: 0.77rem; color: var(--text-mid); max-width: 380px; line-height: 1.5; }
+.obtn { display: inline-flex; align-items: center; gap: 0.35rem; background: var(--fsc); color: #fff; padding: 0.5rem 1.1rem; border-radius: 4px; text-decoration: none; font-size: 0.77rem; font-weight: 600; transition: background 0.12s; }
+.obtn:hover { background: var(--fsc-mid); }
+.lhint { font-size: 0.63rem; color: var(--text-light); font-family: 'IBM Plex Mono', monospace; }
+
+.nwlbl { font-family: 'IBM Plex Mono', monospace; font-size: 0.57rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fsc); background: var(--fsc-pale); border-left: 3px solid var(--fsc); padding: 0.27rem 0.7rem; border-radius: 0 3px 3px 0; display: inline-block; margin: 1rem 0 0.45rem; }
+.ntbl { width: 100%; border-collapse: collapse; }
+.ntbl th { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-light); text-align: left; padding: 0.36rem 0.75rem; border-bottom: 2px solid var(--border); background: var(--bg); }
+.nrow { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+.nrow:hover td { background: #f7fff9; }
+.nrow.fr td:first-child { border-left: 3px solid var(--fsc-light); }
+.nrow td { padding: 0.55rem 0.75rem; vertical-align: top; }
+.nday { font-family: 'IBM Plex Mono', monospace; font-size: 0.67rem; color: var(--text-light); white-space: nowrap; }
+.ntitle { font-size: 0.81rem; font-weight: 500; color: var(--text); }
+.nbodylbl { font-size: 0.64rem; color: var(--text-light); margin-top: 0.1rem; font-family: 'IBM Plex Mono', monospace; }
+.nnote { font-size: 0.73rem; color: var(--text-mid); margin-top: 0.32rem; line-height: 1.5; display: none; }
+.nrow.open .nnote { display: block; }
+.nbadges { display: flex; gap: 0.22rem; flex-wrap: wrap; padding-top: 0.08rem; }
+.nb { font-size: 0.56rem; font-weight: 600; padding: 0.08rem 0.34rem; border-radius: 10px; white-space: nowrap; }
+.nb-f { background: var(--teal-bg);   color: var(--teal);   border: 1px solid var(--teal-br); }
+.nb-n { background: var(--purple-bg); color: var(--purple); border: 1px solid var(--purple-br); }
+.nb-r { background: var(--amber-bg);  color: var(--amber);  border: 1px solid var(--amber-br); }
+.nb-w { background: var(--blue-bg);   color: var(--blue);   border: 1px solid var(--blue-br); }
+.nb-b { background: var(--fsc-pale);  color: var(--fsc);    border: 1px solid #b7e4c7; }
+
+/* ── FOOTER ── */
+.footer { background: var(--surface); border-top: 1px solid var(--border); padding: 0.7rem 2rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.fl { font-size: 0.7rem; color: var(--text-mid); text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.1s; }
+.fl:hover { color: var(--fsc); border-bottom-color: var(--fsc); }
+.flsep { color: var(--border-mid); }
+.fver { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; color: var(--text-light); }
+
+.closed-msg { padding: 4rem 0; text-align: center; color: var(--text-light); font-family: 'Playfair Display', serif; font-style: italic; font-size: 1rem; }
+
+.spinner { width: 11px; height: 11px; border: 2px solid var(--teal-br); border-top-color: var(--teal); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 10px; }
+
+@media (max-width: 640px) {
+  .hdr-top { padding: 0.65rem 1rem; }
+  .page { padding: 1.25rem 1rem 3rem; }
+  .day-strip { padding: 0 1rem; }
+  .filter-row { padding: 0.35rem 1rem; }
+  .footer { padding: 0.65rem 1rem; }
+  .hdr-right .fetch-status { display: none; }
+  .day-strip-wrap { top: 82px; }
+  .filter-row { top: 130px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── HEADER ── -->
+<header class="hdr">
+  <div class="hdr-top">
+    <div class="logo">
+      <span class="logo-main">SB</span>
+      <span class="logo-sub">64 OBS</span>
+    </div>
+    <div class="hdr-titles">
+      <div class="hdr-title">SB64 Forest Observer</div>
+      <div class="hdr-sub">NGO Observer · Bonn · 8–18 June 2026 · Forests · NbS/EbS · Rio Synergies</div>
+    </div>
+    <div class="hdr-right">
+      <span class="fetch-status" id="fetchStatus">—</span>
+      <span class="live-dot"><span class="pulse"></span> Live</span>
+    </div>
+  </div>
+  <nav class="main-tabs">
+    <button class="main-tab active" id="tab-sched" onclick="switchMain('sched')">Schedule &amp; Side Events</button>
+    <button class="main-tab" id="tab-nego" onclick="switchMain('nego')">Negotiations Tracker</button>
+  </nav>
+</header>
+
+<!-- ── DAY STRIP ── -->
+<div class="day-strip-wrap" id="dayStripWrap">
+  <div class="day-strip" id="dayStrip"></div>
+</div>
+
+<!-- ── FILTER ROW ── -->
+<div class="filter-row" id="filterRow">
+  <button class="chip active" onclick="filterCards('all',this)">All</button>
+  <button class="chip" onclick="filterCards('online',this)">Webcast</button>
+  <button class="chip" onclick="filterCards('side',this)">Side events</button>
+  <button class="chip" onclick="filterCards('nego',this)">Negotiations</button>
+  <button class="chip" onclick="filterCards('star',this)">⭐ Forest priority</button>
+  <div class="fr-spacer"></div>
+  <span class="fr-ts" id="frTs">—</span>
+</div>
+
+<!-- ── CONTENT ── -->
+<div class="page" id="page"></div>
+
+<!-- ── FOOTER ── -->
+<footer class="footer">
+  <a class="fl" href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Meetings at a Glance</a>
+  <span class="flsep">·</span>
+  <a class="fl" href="https://unfccc.int/sb64/schedule?date=2026-06-08&type=Negotiations" target="_blank">Negotiations</a>
+  <span class="flsep">·</span>
+  <a class="fl" href="https://seors.unfccc.int/seors/reports/events_list.html" target="_blank">Side Events</a>
+  <span class="flsep">·</span>
+  <a class="fl" href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">Webcasts</a>
+  <span class="flsep">·</span>
+  <a class="fl" href="https://unfccc.int/event/sbsta-64" target="_blank">SBSTA 64</a>
+  <span class="flsep">·</span>
+  <a class="fl" href="https://unfccc.int/event/sbi-64" target="_blank">SBI 64</a>
+  <span class="fver" id="fver">SB64 · Bonn 2026</span>
+</footer>
+
+<script>
+// ════════════════════════════════════════════════
+// DATA
+// ════════════════════════════════════════════════
+const DAYS = [
+  {id:'d08',n:8, wd:'Mon', badge:false, closed:false},
+  {id:'d09',n:9, wd:'Tue', badge:false, closed:false},
+  {id:'d10',n:10,wd:'Wed', badge:false, closed:false},
+  {id:'d11',n:11,wd:'Thu', badge:false, closed:false},
+  {id:'d12',n:12,wd:'Fri', badge:false, closed:false},
+  {id:'d13',n:13,wd:'Sat', badge:false, closed:false},
+  {id:'d14',n:14,wd:'Sun', badge:false, closed:true},
+  {id:'d15',n:15,wd:'Mon', badge:true,  closed:false},
+  {id:'d16',n:16,wd:'Tue', badge:true,  closed:false},
+  {id:'d17',n:17,wd:'Wed', badge:true,  closed:false},
+  {id:'d18',n:18,wd:'Thu', badge:true,  closed:false},
+];
+
+const E = {
+d08:[
+  {type:'online',star:true, time:'10:00+',  room:'Plenary · Webcast', title:'SBSTA 64 & SBI 64 Opening Plenaries', desc:'Both bodies open formally. Watch how forests, NbS, and Rio Conventions are framed in the workplan.', webcast:'https://unfccc.int/media/unfccc/unfccc-webcasts'},
+  {type:'nego',  star:false,time:'Afternoon',room:'Contact groups',   title:'Negotiations begin — all SBSTA & SBI items', desc:'First contact groups. Key: Nairobi Work Programme (NWP — ecosystems/NbS), SJWA (food+land across Rio Conventions), methodological matters incl. LULUCF.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-08&type=Negotiations'},
+  {type:'side',  star:false,time:'15:00–16:15',room:'Kaminzimmer',   title:'Foro Global de Comunidades Locales', desc:'Global Forum of Local Communities (Africa, Asia, LatAm). REDD+ social safeguards, rights recognition.', orgs:'RED MOCAF · Utz Che&#39; · ICV (Brazil)'},
+  {type:'side',  star:false,time:'16:30–17:45',room:'Bonn',          title:'Santa Marta and Beyond: Delivering on the TAFF', desc:'COP30 Presidency TAFF Roadmap (Transformative Action on Forests and Futures) — civil society and faith perspectives.', orgs:'CIDSE · OPAN · Swiss Lenten Fund'},
+],
+d09:[
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups', title:'Negotiations — NWP, SJWA, GGA', desc:'Nairobi Work Programme covers ecosystem-based adaptation and NbS. SJWA covers agriculture across Rio Conventions. Check daily programme at 8 AM.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-09&type=Negotiations'},
+  {type:'side',  star:true, time:'16:30–17:45',room:'Berlin',        title:'Nature-based Solutions for Climate Resilience in Small Island States', desc:'NbS for coastal/urban resilience. Adaptation finance, NbS integration into UNFCCC frameworks. Mauritius, UNEP-CCC, WWF, GIZ.', orgs:'Mauritius · Dublin City University · UNEP-CCC · WWF'},
+],
+d10:[
+  {type:'nego',  star:true, time:'All day',   room:'Contact groups', title:'Negotiations — NWP, SJWA Part III, LCIPP Dialogue', desc:'SJWA in-session workshop Part III (14:00–18:00). LCIPP Annual Dialogue on indigenous knowledge. UAE Just Transition Dialogue Day 1.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-10&type=Negotiations'},
+  {type:'side',  star:true, time:'13:30–14:45',room:'Bonn',          title:'Rio Convention Synergies — UNFCCC Secretariat', desc:'UNFCCC Secretariat event on synergistic efforts across UNFCCC, CBD, and UNCCD. Directly relevant to your mandate.', orgs:'UNFCCC Secretariat (Aiping Chen)'},
+  {type:'side',  star:true, time:'16:30–17:45',room:'Kaminzimmer',   title:'Closing the Accountability Gap: A Forest Roadmap Priority', desc:'COP30 Forest Roadmap — accountability for halting deforestation by 2030. Harmonised standards, transparent monitoring, Global North reporting gaps.', orgs:'NRDC · University of Melbourne · Griffith University · Solutions for Our Climate'},
+  {type:'side',  star:false,time:'10:30–11:45',room:'Berlin',        title:'Mountains and Climate: SBSTA 64 Dialogue and COP 31', desc:'Mountains as integrated climate and biodiversity spaces. ICIMOD, Andorra, Bhutan, Nepal.', orgs:'Andorra · ICIMOD · Mountain Partnership'},
+],
+d11:[
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups', title:'Negotiations — UAE Dialogue Day 2, 3rd FMCP Part I', desc:'3rd Facilitative, Multilateral Consideration of Progress Part I. UAE Just Transition Dialogue Day 2.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-11&type=Negotiations'},
+  {type:'side',  star:true, time:'10:30–11:45',room:'Kaminzimmer',   title:'Agriculture: Financing & Just Transitions Across the Rio Conventions', desc:'UNFCCC + CBD + UNCCD framing. Agroecology, food sovereignty, direct access financing.', orgs:'Action Against Hunger · ActionAid · AFSA · Rural Forum Mundial'},
+  {type:'side',  star:true, time:'15:00–16:15',room:'Bonn',          title:'Aligning Climate, Biodiversity and Land Goals Across the Rio Conventions', desc:'Under UNCCD Presidency (Mongolia). UNFCCC + CBD + UNCCD alignment. Core Rio Convention Synergies event.', orgs:'Mongolia · BirdLife International · ZSL · RSPB · Nigerian Conservation Foundation'},
+  {type:'side',  star:false,time:'10:30–11:45',room:'Berlin',        title:'Indigenous Adaptation Plans in the Brazilian Amazon', desc:'Indigenous climate adaptation plans as a GGA blueprint. NbS via indigenous-led ecosystem stewardship.', orgs:'IEB · INFOE'},
+],
+d12:[
+  {type:'mandate',star:true,time:'All day',   room:'Plenary · Webcast confirmed', title:'Mandated Dialogue on Mountains and Climate Change', desc:'COP30-mandated (FCCC/CP/2025/12 §40–44). Mountain forests, cascading downstream effects. Webcast confirmed. Feeds into COP31 and GST2.', orgs:'SBSTA & SBI Chairs · Bhutan · Switzerland', webcast:'https://unfccc.int/sb64/meetings-at-a-glance'},
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups', title:'Negotiations — 3rd FMCP Parts II–IV · Art 6.2 Ambition Dialogue', desc:'Article 6.2 includes REDD+ results-based payments and forest carbon. Watch for safeguards language.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-12&type=Negotiations'},
+],
+d13:[
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups', title:'Negotiations — end of Week 1', desc:'End-of-week drafting on NWP, SJWA, methodological texts.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-13&type=Negotiations'},
+  {type:'side',  star:true, time:'10:30–11:45',room:'Bonn',          title:'Scaling Nature-based Solutions for Carbon, Biodiversity & Livelihoods', desc:'Community-based NbS, mangrove restoration, Article 6, innovative finance. Core NbS/EbS finance event.', orgs:'Friendship · University of British Columbia · Zhejiang Agriculture & Forestry University'},
+  {type:'side',  star:false,time:'15:00–16:15',room:'Bonn',          title:'From Soil to COP: Global South Food Systems & Paris Agreement', desc:'COP30 Food Systems Plan. Agroforestry and food-forest linkages.', orgs:'Instituto Regenera · Imaflora · Fundação Dom Cabral'},
+  {type:'side',  star:false,time:'16:30–17:45',room:'Bonn',          title:'Warming-induced Emissions: Wildfires, Permafrost, Wetlands', desc:'Rising emissions from wildfires, permafrost, wetlands. Relevant to forest carbon accounting.', orgs:'Environmental Defense Fund · Future Earth · Woodwell Climate Research Center'},
+],
+d14:[],
+d15:[
+  {type:'online',star:true, time:'From today',room:'WCCB (in person)', title:'Badge access begins — attend in person', desc:'Enter WCCB from today. Check daily programme at 8 AM for NWP, LULUCF, Rio Conventions contact group schedules.', webcast:'https://unfccc.int/sb64/meetings-at-a-glance'},
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups',   title:'Negotiations Week 2 — Annual GST-NDC Dialogue', desc:'Week 2 negotiations. Annual GST-NDC Dialogue. Text drafting intensifies.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-15&type=Negotiations'},
+  {type:'side',  star:true, time:'16:30–17:45',room:'Bonn',            title:'Forests, Finance, Synergies: Advancing Integrated Climate Action to COP35', desc:'CIFOR-ICRAF, IUCN, Igarapé, Philippines negotiator. Landscape approaches, Rio Convention synergies, roadmap for forests and NbS to COP35. Highest-priority event of the conference.', orgs:'CIFOR-ICRAF · IUCN · Igarapé Institute · Philippines'},
+],
+d16:[
+  {type:'nego',  star:false,time:'All day',   room:'Contact groups', title:'Negotiations — closing texts', desc:'Intense text work. Gender-responsive climate finance dialogue.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-16&type=Negotiations'},
+  {type:'side',  star:true, time:'12:00–13:15',room:'Bonn',          title:'The Leading Role of Brazilian Forests in the Global Climate Agenda', desc:'Brazil&#39;s ~500 M ha of forests: carbon storage, "flying rivers", biodiversity. COP30 forest policies.', orgs:'Arapyaú Institute · Coalizão Brasil · Brazilian Tree Industry (IBÁ)'},
+  {type:'side',  star:false,time:'10:30–11:45',room:'Berlin',        title:'Monitoring & Learning for Adaptation including Ecosystem-based Adaptation', desc:'MEL systems for adaptation with explicit EbA focus. GGA target 10d. Costa Rica, Guatemala, UNEP-WCMC, TNC.', orgs:'UNEP-WCMC · TNC · Costa Rica · SANBI'},
+],
+d17:[
+  {type:'nego',  star:true, time:'All day',   room:'Contact groups (in person)', title:'Penultimate negotiations day — final text and informal consultations', desc:'Intense bracketing. Watch for NGO observer slots in contact groups on NWP, agriculture, Rio Conventions. Attend in person.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-17&type=Negotiations'},
+],
+d18:[
+  {type:'nego',  star:false,time:'Morning',   room:'Contact groups',        title:'Final contact group sessions before closing plenaries', desc:'Last chance to resolve brackets on forest-relevant items.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-18&type=Negotiations'},
+  {type:'online',star:true, time:'Afternoon', room:'Closing plenary · Webcast', title:'SBSTA 64 & SBI 64 Closing Plenaries', desc:'Adoption of agreed conclusions. Watch for NWP/NbS text, SJWA outcomes, Rio Conventions cooperation, Mountain Dialogue oral summary.', webcast:'https://unfccc.int/media/unfccc/unfccc-webcasts'},
+],
+};
+
+const ROUNDUP = [
+  {date:'Mon 8', text:'<strong>Opening plenaries</strong> webcast. Negotiations kick off in the afternoon.'},
+  {date:'Tue 9', text:'<span class="hot">NbS for SIDS</span> (16:30, Berlin) — NbS adaptation finance with Mauritius, UNEP, WWF.'},
+  {date:'Wed 10',text:'<span class="hot">🔑 Rio Convention Synergies</span> (13:30, Bonn). <span class="hot">🔑 Forest Roadmap accountability</span> (16:30, Kaminzimmer).'},
+  {date:'Thu 11',text:'<span class="hot">🔑 Aligning UNFCCC+CBD+UNCCD</span> (15:00, Bonn). Agriculture across Rio Conventions (10:30, Kaminzimmer).'},
+  {date:'Fri 12',text:'<span class="hot">🔑 Mandated Mountain Dialogue</span> — all day, webcast. Negotiations: 3rd FMCP + Art 6.2.'},
+  {date:'Sat 13',text:'<span class="hot">🔑 NbS for Carbon+Biodiversity</span> (10:30, Bonn) — mangroves, Article 6.'},
+  {date:'Mon 15',text:'<strong>Badge access.</strong> <span class="hot">🔑 Forests, Finance, Synergies</span> (16:30, Bonn) — CIFOR-ICRAF, IUCN. Highest-priority event.'},
+  {date:'Tue 16',text:'<span class="hot">Brazilian Forests in the Climate Agenda</span> (12:00, Bonn). EbA monitoring (10:30, Berlin).'},
+  {date:'Thu 18',text:'<strong>Closing plenaries</strong> — adoption of forest/NbS/Rio Conventions conclusions.'},
+];
+
+const NW1 = [
+  {day:'Mon 8', title:'Opening Plenaries',              body:'SBSTA 64 + SBI 64', forest:false, online:true,  note:'Both bodies open. Agenda sets framing for all negotiations.'},
+  {day:'Mon 8', title:'Negotiations begin — all items', body:'SBSTA/SBI',          forest:true,  online:false, note:'Key: NWP (ecosystem-based adaptation, NbS), SJWA (food+land across Rio Conventions), methodological matters incl. LULUCF.'},
+  {day:'Tue 9', title:'Negotiations — NWP, SJWA, GGA',  body:'SBSTA/SBI',          forest:true,  online:false, note:'NWP: ecosystem-based adaptation and NbS. SJWA bridges UNFCCC + CBD + UNCCD on food systems.'},
+  {day:'Wed 10',title:'Negotiations — SJWA Part III, LCIPP Dialogue', body:'SBSTA/SBI', forest:true, online:false, note:'SJWA in-session workshop Part III (14:00–18:00). LCIPP Annual Dialogue on indigenous/local knowledge systems.'},
+  {day:'Wed 10',title:'3rd FMCP — Part I',              body:'SBI',                forest:false, online:false, note:'Facilitative, Multilateral Consideration of Progress. Forest-sector mitigation in NDC reviews.'},
+  {day:'Thu 11',title:'Negotiations + UAE Dialogue Day 2', body:'SBSTA/SBI',        forest:true,  online:false, note:'3rd FMCP Part I continues. UAE Just Transition Dialogue Day 2.'},
+  {day:'Fri 12',title:'3rd FMCP Parts II, III, IV',     body:'SBI',                forest:false, online:false, note:'Continued NDC review. Forest land-use commitments.'},
+  {day:'Fri 12',title:'Article 6.2 Ambition Dialogue — Part II', body:'SBSTA',    forest:true,  nbs:true, online:false, note:'Art. 6.2 includes REDD+ results-based payments and forest carbon. Watch for safeguards and environmental integrity.'},
+  {day:'Sat 13',title:'Negotiations — text drafting begins', body:'SBSTA/SBI',      forest:true,  online:false, note:'End of Week 1. NWP, SJWA, methodological texts move toward conclusions language.'},
+];
+const NW2 = [
+  {day:'Mon 15',title:'Negotiations Week 2 + Annual GST-NDC Dialogue', body:'SBSTA/SBI', forest:true, badge:true, online:false, note:'GST-NDC Dialogue. Forest mitigation and land-use commitments reviewed.'},
+  {day:'Tue 16',title:'Negotiations — closing texts',   body:'SBSTA/SBI',          forest:true,  badge:true, online:false, note:'Intense text work. Gender-responsive climate finance dialogue.'},
+  {day:'Wed 17',title:'Negotiations — penultimate day', body:'SBSTA/SBI',          forest:true,  badge:true, online:false, note:'Final bracketing. NGO observer access may be granted in contact groups in person.'},
+  {day:'Wed 17',title:'10th Meeting — Paris Committee on Capacity-building', body:'SBI', forest:false, badge:true, online:false, note:'Capacity-building incl. forests and REDD+ implementation.'},
+  {day:'Thu 18',title:'Final contact group sessions (morning)', body:'SBSTA/SBI',  forest:true,  badge:true, online:false, note:'Last-minute text finalization before closing plenaries.'},
+  {day:'Thu 18',title:'Closing Plenaries',              body:'SBSTA 64 + SBI 64', forest:true,  badge:true, online:true,  note:'Adoption of agreed conclusions. Watch for NWP/NbS, SJWA, Rio Conventions cooperation, Mountain Dialogue oral summary.'},
+];
+
+const FOREST_KW = ['forest','deforest','redd','lulucf','land use','nature-based','nature based','nbs','ecosystem','biodiversity','restoration','landscape','mangrove','wetland','peatland','rio convention','synerg','unccd','cbd','taff','woodland','agroforest','savanna','conservation','habitat'];
+
+// ════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════
+let activeDay = 'd08';
+let activeFilter = 'all';
+let activeMain = 'sched';
+let liveEvents = [];
+let seenTitles = new Set();
+const CONF_DATES = ['2026-06-08','2026-06-09','2026-06-10','2026-06-11','2026-06-12','2026-06-13','2026-06-15','2026-06-16','2026-06-17','2026-06-18'];
+let ndIdx = 0;
+
+// ════════════════════════════════════════════════
+// BUILD DAY STRIP
+// ════════════════════════════════════════════════
+function buildDayStrip() {
+  const strip = document.getElementById('dayStrip');
+  DAYS.forEach(d => {
+    const evs = E[d.id] || [];
+    const btn = document.createElement('button');
+    btn.className = 'day-btn' + (d.closed ? ' closed' : '') + (d.id === activeDay ? ' active' : '');
+    btn.id = 'daybtn-' + d.id;
+    btn.onclick = () => showDay(d.id);
+
+    const pips = [];
+    if (evs.some(e => e.type === 'nego'))   pips.push('<span class="pip pip-n" title="Negotiation"></span>');
+    if (evs.some(e => e.type === 'side' || e.type === 'mandate')) pips.push('<span class="pip pip-s" title="Side event"></span>');
+    if (evs.some(e => e.type === 'online')) pips.push('<span class="pip pip-o" title="Webcast"></span>');
+    if (evs.some(e => e.star))              pips.push('<span class="pip pip-star" title="Forest priority"></span>');
+
+    btn.innerHTML = `<span class="dn">${d.n}</span><span class="dw">${d.wd}</span><div class="dpips">${pips.join('')}</div>`;
+    strip.appendChild(btn);
+  });
+}
+
+// ════════════════════════════════════════════════
+// BUILD CONTENT VIEWS
+// ════════════════════════════════════════════════
+function buildContent() {
+  const page = document.getElementById('page');
+
+  // ── Roundup (overview) ──
+  const rv = document.createElement('div');
+  rv.id = 'view-roundup'; rv.className = 'view';
+  rv.innerHTML = `
+    <div class="day-hd"><h2>Week at a glance</h2><span class="day-hd-sub">All key moments for forests, NbS &amp; Rio Convention synergies</span></div>
+    <div id="live-banner" class="ibar teal"><span class="spinner"></span> Fetching live side events from UNFCCC SEORS…</div>
+    <table class="rtbl">
+      <thead><tr><th>Date</th><th>What's happening</th></tr></thead>
+      <tbody>${ROUNDUP.map(r => `<tr><td>${r.date}</td><td>${r.text}</td></tr>`).join('')}</tbody>
+    </table>
+    <div class="sh">Online access</div>
+    <div class="ibar blue">📡 Open plenary meetings are webcast live at <a href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">unfccc.int/webcasts</a>. The <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Daily Programme</a> is published each morning ~8 AM CET. Informal contact groups are generally not webcast.</div>`;
+  page.appendChild(rv);
+
+  // ── Day views ──
+  DAYS.forEach(d => {
+    const dv = document.createElement('div');
+    dv.id = 'view-' + d.id; dv.className = 'view';
+
+    if (d.closed) {
+      dv.innerHTML = `<div class="day-hd"><h2>${d.wd} ${d.n}</h2><span class="day-hd-sub">14 June 2026</span></div><div class="closed-msg">Conference premises closed — rest day</div>`;
+    } else {
+      const evs = E[d.id] || [];
+      const negoEvs  = evs.filter(e => e.type === 'nego');
+      const otherEvs = evs.filter(e => e.type !== 'nego');
+      const bar = d.badge
+        ? `<div class="ibar green">🏛 Badge access from today. Attend in person at WCCB, Platz der Vereinten Nationen 2, 53113 Bonn.</div>`
+        : `<div class="ibar blue">📡 No badge today. Join open sessions via <a href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">webcasts</a>. Check <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Meetings at a Glance</a> each morning at 8 AM.</div>`;
+
+      const mkCard = e => {
+        const tc   = {online:'t-online', side:'t-side', nego:'t-nego', mandate:'t-mandate'}[e.type] || 't-online';
+        const tl   = {online:'Webcast', side:'Side event', nego:'Negotiation', mandate:'Mandated event'}[e.type] || '';
+        const tcls = {online:'ct-online', side:'ct-side', nego:'ct-nego', mandate:'ct-mandate'}[e.type] || 'ct-online';
+        const wc   = e.webcast ? `<a class="wcbtn" href="${e.webcast}" target="_blank">↗ Open link</a>` : '';
+        return `<div class="card ${tc}${e.star ? ' star' : ''}" data-type="${e.type}" data-star="${e.star ? '1' : '0'}" onclick="this.classList.toggle('open')">
+          <div class="cmeta">
+            <span class="ctime">${e.time}</span>
+            <span class="ctag ${tcls}">${tl}</span>
+            ${e.star ? '<span class="ctag ct-star">⭐ Forest priority</span>' : ''}
+            ${e.room ? `<span class="croom">${e.room}</span>` : ''}
+          </div>
+          <div class="ctitle">${e.title}</div>
+          <div class="cbody">${e.desc}${e.orgs ? `<div class="corgs">${e.orgs}</div>` : ''}${wc}</div>
+        </div>`;
+      };
+
+      dv.innerHTML = `
+        <div class="day-hd">
+          <h2>${d.wd} ${d.n} June</h2>
+          <span class="day-hd-sub">${d.n} June 2026</span>
+          ${d.badge ? '<span class="badge-pill">🏛 Badge access</span>' : ''}
+        </div>
+        ${bar}
+        <div id="live-slot-${d.id}"></div>
+        ${negoEvs.length  ? `<div class="sh">Negotiations</div><div class="cards" id="nego-${d.id}">${negoEvs.map(mkCard).join('')}</div>` : ''}
+        ${otherEvs.length ? `<div class="sh">Side events &amp; mandated events</div><div class="cards" id="other-${d.id}">${otherEvs.map(mkCard).join('')}</div>` : ''}
+        <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.9rem;font-family:'IBM Plex Mono',monospace;">
+          Click any card to expand &nbsp;·&nbsp;
+          <a href="https://unfccc.int/sb64/schedule?date=2026-06-${String(d.n).padStart(2,'0')}&type=Negotiations" target="_blank" style="color:var(--text-light)">UNFCCC negotiations for this day ↗</a>
+        </p>`;
+    }
+    page.appendChild(dv);
+  });
+
+  // ── Negotiations view ──
+  const nv = document.createElement('div');
+  nv.id = 'view-nego'; nv.className = 'view';
+
+  const today = new Date().toISOString().slice(0,10);
+  const ti = CONF_DATES.findIndex(d => d >= today);
+  ndIdx = ti >= 0 ? ti : 0;
+
+  nv.innerHTML = `
+    <div class="day-hd"><h2>Negotiations Tracker</h2><span class="day-hd-sub">Official schedule · SB 64 Overview (4 May 2026)</span></div>
+    <div class="nego-intro">
+      The UNFCCC negotiations schedule updates live during the session but is JavaScript-rendered — no public data feed exists.
+      Use the <strong>live link panel</strong> below to open the official filtered page for any day.
+      The <strong>known sessions table</strong> is pre-populated from the
+      <a href="https://unfccc.int/sites/default/files/resource/SB_64_Overview_Schedule_04.05.2026.V1.pdf" target="_blank">official Overview Schedule (4 May 2026)</a>.
+      Teal-bordered rows are relevant to forests, NbS/EbS, or Rio Convention synergies. Click any row to expand notes.
+    </div>
+
+    <div class="live-panel">
+      <div class="lph">
+        <h3><span class="pulse"></span>&nbsp;Live UNFCCC Negotiations Schedule</h3>
+        <div class="dnav">
+          <button class="narr" onclick="prevND()">◀</button>
+          <span class="ndlbl" id="ndLbl">—</span>
+          <button class="narr" onclick="nextND()">▶</button>
+        </div>
+        <button class="rlbtn" onclick="updateNL()">↻</button>
+      </div>
+      <div class="lbody">
+        <p>The UNFCCC schedule page can't be embedded, but opens directly and updates live throughout the conference.</p>
+        <a class="obtn" id="negoLink" href="#" target="_blank">Open UNFCCC Negotiations Schedule ↗</a>
+        <span class="lhint">Navigate dates with ◀ ▶ then open the link</span>
+      </div>
+    </div>
+
+    <div class="nwlbl">Week 1</div>
+    <table class="ntbl">
+      <thead><tr><th style="width:74px">Day</th><th>Session</th><th style="width:130px">Relevance</th></tr></thead>
+      <tbody id="ntb1"></tbody>
+    </table>
+
+    <div class="nwlbl">Week 2</div>
+    <table class="ntbl">
+      <thead><tr><th style="width:74px">Day</th><th>Session</th><th style="width:130px">Relevance</th></tr></thead>
+      <tbody id="ntb2"></tbody>
+    </table>
+
+    <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:'IBM Plex Mono',monospace;">
+      Source: UNFCCC Overview Schedule v1, 4 May 2026. Exact times confirmed in the Daily Programme each morning.
+    </p>`;
+
+  page.appendChild(nv);
+
+  // Fill nego tables
+  [[NW1,'ntb1'],[NW2,'ntb2']].forEach(([rows, tid]) => {
+    const tb = document.getElementById(tid);
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.className = 'nrow' + (r.forest ? ' fr' : '');
+      tr.onclick = () => tr.classList.toggle('open');
+      const b = [];
+      if (r.forest) b.push('<span class="nb nb-f">🌳 Forests/NbS</span>');
+      if (r.nbs)    b.push('<span class="nb nb-n">🌿 NbS/EbS</span>');
+      if (r.note && r.note.toLowerCase().includes('rio')) b.push('<span class="nb nb-r">⚖️ Rio</span>');
+      if (r.online) b.push('<span class="nb nb-w">📡 Webcast</span>');
+      if (r.badge)  b.push('<span class="nb nb-b">🏛 Badge</span>');
+      tr.innerHTML = `
+        <td><span class="nday">${r.day}</span></td>
+        <td>
+          <div class="ntitle">${r.title}</div>
+          <div class="nbodylbl">${r.body}</div>
+          <div class="nnote">${r.note || ''}</div>
+        </td>
+        <td><div class="nbadges">${b.join('')}</div></td>`;
+      tb.appendChild(tr);
+    });
+  });
+
+  updateNL();
+}
+
+// ════════════════════════════════════════════════
+// LIVE FETCH
+// ════════════════════════════════════════════════
+function isForest(t, d) {
+  const txt = ((t||'') + ' ' + (d||'')).toLowerCase();
+  return FOREST_KW.some(k => txt.includes(k));
+}
+
+async function fetchLive() {
+  const st = document.getElementById('fetchStatus');
+  try {
+    st.textContent = 'Fetching…'; st.className = 'fetch-status';
+    const res = await fetch('/api/schedule?source=sideevents');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const all = data.events || [];
+    const newForest = [];
+
+    all.forEach(ev => {
+      if (!ev.title) return;
+      if (isForest(ev.title, ev.desc) && !seenTitles.has(ev.title)) {
+        seenTitles.add(ev.title);
+        newForest.push(ev);
+      }
+    });
+
+    liveEvents = all.filter(ev => isForest(ev.title, ev.desc));
+    updateLiveBanner(newForest, all.length);
+    injectLiveCards();
+
+    st.textContent = '✓ Updated ' + new Date().toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'});
+    st.className = 'fetch-status ok';
+    tickTs();
+
+  } catch(err) {
+    const st = document.getElementById('fetchStatus');
+    st.textContent = '⚠ Fetch failed'; st.className = 'fetch-status err';
+    const lb = document.getElementById('live-banner');
+    if (lb) { lb.className = 'ibar red'; lb.innerHTML = `⚠ Could not reach SEORS (${err.message}). Pre-loaded data shown. Retrying in 3 min.`; }
+  }
+}
+
+function updateLiveBanner(newF, total) {
+  const lb = document.getElementById('live-banner');
+  if (!lb) return;
+  if (newF.length > 0) {
+    lb.className = 'ibar teal';
+    lb.innerHTML = `🆕 <strong>${newF.length} new forest-relevant side event${newF.length > 1 ? 's' : ''} detected.</strong> Check the relevant day tab. Total SEORS events: ${total}.`;
+  } else {
+    lb.className = 'ibar teal';
+    lb.innerHTML = `<span class="pulse" style="background:var(--fsc-light)"></span>&nbsp; Live data loaded — ${total} total SEORS events, ${liveEvents.length} forest-relevant. No new additions since last check.`;
+  }
+}
+
+function injectLiveCards() {
+  DAYS.forEach(d => {
+    const slot = document.getElementById('live-slot-' + d.id);
+    if (!slot) return;
+    const matched = liveEvents.filter(ev => {
+      if (!ev.date) return false;
+      const s = ev.date + '';
+      return s.includes(String(d.n) + ' Jun') || s.includes(' ' + d.n + ' ');
+    });
+    if (!matched.length) { slot.innerHTML = ''; return; }
+
+    const cards = matched.map(ev => {
+      const isNew = !Array.from(seenTitles).slice(0, -matched.length).includes(ev.title);
+      return `<div class="card t-side live-new" onclick="this.classList.toggle('open')">
+        <div class="cmeta">
+          ${ev.time ? `<span class="ctime">${ev.time}</span>` : ''}
+          <span class="ctag ct-live">🔴 LIVE from SEORS</span>
+          ${isNew ? '<span class="ctag ct-new">🆕 New</span>' : ''}
+          ${ev.room ? `<span class="croom">${ev.room}</span>` : ''}
+        </div>
+        <div class="ctitle">${ev.title}</div>
+        ${ev.desc ? `<div class="cbody">${ev.desc}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    slot.innerHTML = `<div class="sh">Live — forest-relevant additions from SEORS</div><div class="cards">${cards}</div>`;
+  });
+}
+
+// ════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════
+function showDay(id) {
+  activeDay = id;
+  document.querySelectorAll('.day-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('daybtn-' + id);
+  if (btn) { btn.classList.add('active'); btn.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}); }
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const dv = document.getElementById('view-' + id);
+  if (dv) dv.classList.add('active');
+  applyFilter();
+}
+
+function switchMain(m) {
+  activeMain = m;
+  document.getElementById('tab-sched').classList.toggle('active', m === 'sched');
+  document.getElementById('tab-nego').classList.toggle('active', m === 'nego');
+
+  const dayStripWrap = document.getElementById('dayStripWrap');
+  const filterRow = document.getElementById('filterRow');
+  dayStripWrap.style.display = m === 'sched' ? '' : 'none';
+  filterRow.style.display    = m === 'sched' ? '' : 'none';
+
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  if (m === 'sched') {
+    const dv = document.getElementById('view-' + activeDay);
+    if (dv) dv.classList.add('active');
+  } else {
+    document.getElementById('view-nego').classList.add('active');
+  }
+}
+
+function filterCards(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  applyFilter();
+}
+
+function applyFilter() {
+  document.querySelectorAll('.card').forEach(c => {
+    const t = c.dataset.type, s = c.dataset.star === '1';
+    let show = true;
+    if      (activeFilter === 'online') show = (t === 'online' || t === 'mandate');
+    else if (activeFilter === 'side')   show = (t === 'side'   || t === 'mandate');
+    else if (activeFilter === 'nego')   show = (t === 'nego');
+    else if (activeFilter === 'star')   show = s;
+    c.style.display = show ? '' : 'none';
+  });
+}
+
+function updateNL() {
+  const date = CONF_DATES[ndIdx] || CONF_DATES[0];
+  const link = document.getElementById('negoLink');
+  if (link) link.href = `https://unfccc.int/sb64/schedule?date=${date}&type=Negotiations`;
+  const lbl = document.getElementById('ndLbl');
+  if (lbl) lbl.textContent = new Date(date + 'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+}
+function prevND() { if (ndIdx > 0) { ndIdx--; updateNL(); } }
+function nextND() { if (ndIdx < CONF_DATES.length - 1) { ndIdx++; updateNL(); } }
+
+function tickTs() {
+  const s = new Date().toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'}) + ' CET';
+  const ft = document.getElementById('frTs'); if (ft) ft.textContent = 'Refreshed ' + s;
+  const fv = document.getElementById('fver'); if (fv) fv.textContent = 'SB64 · Bonn 2026 · ' + s;
+}
+
+// ════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════
+buildDayStrip();
+buildContent();
+
+// Auto-jump to today if within conference
+const todayStr = new Date().toISOString().slice(0,10);
+const DM = {'2026-06-08':'d08','2026-06-09':'d09','2026-06-10':'d10','2026-06-11':'d11',
+            '2026-06-12':'d12','2026-06-13':'d13','2026-06-14':'d14','2026-06-15':'d15',
+            '2026-06-16':'d16','2026-06-17':'d17','2026-06-18':'d18'};
+// If today is a conference day, show it. Otherwise show the first upcoming day (or d08 before conf starts).
+if (DM[todayStr]) {
+  showDay(DM[todayStr]);
+} else {
+  // Find the next upcoming conference day, or fall back to d08
+  const upcoming = CONF_DATES.find(d => d >= todayStr);
+  const fallback = upcoming ? DM[upcoming] : 'd08';
+  showDay(fallback || 'd08');
+}
+
+tickTs();
+fetchLive();
+setInterval(fetchLive, 3 * 60 * 1000);
+</script>
+</body>
+</html>
