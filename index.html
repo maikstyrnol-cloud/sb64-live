@@ -255,7 +255,7 @@ button { font-family: inherit; cursor: pointer; }
   <span class="flsep">·</span>
   <a class="fl" href="https://seors.unfccc.int/seors/reports/events_list.html" target="_blank">Side Events</a>
   <span class="flsep">·</span>
-  <a class="fl" href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">Webcasts</a>
+  <a class="fl" href="https://unfccc.int/sb64#schedules" target="_blank">Webcasts</a>
   <span class="flsep">·</span>
   <a class="fl" href="https://unfccc.int/event/sbsta-64" target="_blank">SBSTA 64</a>
   <span class="flsep">·</span>
@@ -283,7 +283,7 @@ const DAYS = [
 
 const E = {
 d08:[
-  {type:'online',star:true, time:'10:00+',  room:'Plenary · Webcast', title:'SBSTA 64 & SBI 64 Opening Plenaries', desc:'Both bodies open formally. Watch how forests, NbS, and Rio Conventions are framed in the workplan.', webcast:'https://unfccc.int/media/unfccc/unfccc-webcasts'},
+  {type:'online',star:true, time:'10:00+',  room:'Plenary · Webcast', title:'SBSTA 64 & SBI 64 Opening Plenaries', desc:'Both bodies open formally. Watch how forests, NbS, and Rio Conventions are framed in the workplan.', webcast:'https://unfccc.int/sb64#schedules'},
   {type:'nego',  star:false,time:'Afternoon',room:'Contact groups',   title:'Negotiations begin — all SBSTA & SBI items', desc:'First contact groups. Key: Nairobi Work Programme (NWP — ecosystems/NbS), SJWA (food+land across Rio Conventions), methodological matters incl. LULUCF.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-08&type=Negotiations'},
   {type:'side',  star:false,time:'15:00–16:15',room:'Kaminzimmer',   title:'Foro Global de Comunidades Locales', desc:'Global Forum of Local Communities (Africa, Asia, LatAm). REDD+ social safeguards, rights recognition.', orgs:'RED MOCAF · Utz Che&#39; · ICV (Brazil)'},
   {type:'side',  star:false,time:'16:30–17:45',room:'Bonn',          title:'Santa Marta and Beyond: Delivering on the TAFF', desc:'COP30 Presidency TAFF Roadmap (Transformative Action on Forests and Futures) — civil society and faith perspectives.', orgs:'CIDSE · OPAN · Swiss Lenten Fund'},
@@ -330,7 +330,7 @@ d17:[
 ],
 d18:[
   {type:'nego',  star:false,time:'Morning',   room:'Contact groups',        title:'Final contact group sessions before closing plenaries', desc:'Last chance to resolve brackets on forest-relevant items.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-18&type=Negotiations'},
-  {type:'online',star:true, time:'Afternoon', room:'Closing plenary · Webcast', title:'SBSTA 64 & SBI 64 Closing Plenaries', desc:'Adoption of agreed conclusions. Watch for NWP/NbS text, SJWA outcomes, Rio Conventions cooperation, Mountain Dialogue oral summary.', webcast:'https://unfccc.int/media/unfccc/unfccc-webcasts'},
+  {type:'online',star:true, time:'Afternoon', room:'Closing plenary · Webcast', title:'SBSTA 64 & SBI 64 Closing Plenaries', desc:'Adoption of agreed conclusions. Watch for NWP/NbS text, SJWA outcomes, Rio Conventions cooperation, Mountain Dialogue oral summary.', webcast:'https://unfccc.int/sb64#schedules'},
 ],
 };
 
@@ -419,7 +419,7 @@ function buildContent() {
       <tbody>${ROUNDUP.map(r => `<tr><td>${r.date}</td><td>${r.text}</td></tr>`).join('')}</tbody>
     </table>
     <div class="sh">Online access</div>
-    <div class="ibar blue">📡 Open plenary meetings are webcast live at <a href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">unfccc.int/webcasts</a>. The <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Daily Programme</a> is published each morning ~8 AM CET. Informal contact groups are generally not webcast.</div>`;
+    <div class="ibar blue">📡 Open plenary meetings are webcast live at <a href="https://unfccc.int/sb64#schedules" target="_blank">unfccc.int/webcasts</a>. The <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Daily Programme</a> is published each morning ~8 AM CET. Informal contact groups are generally not webcast.</div>`;
   page.appendChild(rv);
 
   // ── Day views ──
@@ -435,7 +435,7 @@ function buildContent() {
       const otherEvs = evs.filter(e => e.type !== 'nego');
       const bar = d.badge
         ? `<div class="ibar green">🏛 Badge access from today. Attend in person at WCCB, Platz der Vereinten Nationen 2, 53113 Bonn.</div>`
-        : `<div class="ibar blue">📡 No badge today. Join open sessions via <a href="https://unfccc.int/media/unfccc/unfccc-webcasts" target="_blank">webcasts</a>. Check <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Meetings at a Glance</a> each morning at 8 AM.</div>`;
+        : `<div class="ibar blue">📡 No badge today. Join open sessions via <a href="https://unfccc.int/sb64#schedules" target="_blank">webcasts</a>. Check <a href="https://unfccc.int/sb64/meetings-at-a-glance" target="_blank">Meetings at a Glance</a> each morning at 8 AM.</div>`;
 
       const mkCard = e => {
         const tc   = {online:'t-online', side:'t-side', nego:'t-nego', mandate:'t-mandate'}[e.type] || 't-online';
