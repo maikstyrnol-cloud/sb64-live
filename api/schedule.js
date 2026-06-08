@@ -35,10 +35,11 @@ export default async function handler(req, res) {
     if (source === 'negotiations') {
       if (!key) throw new Error('No BROWSERLESS_KEY');
       const date = req.query.date || new Date().toISOString().slice(0, 10);
-      const html = await browserlessGet(
-        'https://unfccc.int/sb64/schedule?date=' + date,
-        key
-      );
+      const debug = req.query.debug === '1';
+      const html = await browserlessGet('https://unfccc.int/sb64/schedule?date=' + date, key);
+      if (debug) {
+        return res.status(200).json({ debug: true, htmlLength: html.length, preview: html.slice(0, 3000) });
+      }
       const sessions = parseSchedulePage(html);
       return res.status(200).json({ source: 'unfccc-schedule', date, fetchedAt: new Date().toISOString(), sessions });
     }
