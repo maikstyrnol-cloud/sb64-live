@@ -24,13 +24,12 @@ export default async function handler(req, res) {
       // Use Browserless to render the UNFCCC schedule page with JS
       const targetUrl = `https://unfccc.int/sb64/schedule?date=${date}`;
 
-      const browserlessRes = await fetch(`https://chrome.browserless.io/scrape?token=${key}`, {
+      const browserlessRes = await fetch(`https://production-sfo.browserless.io/content?token=${key}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url: targetUrl,
-          waitFor: 3000, // wait 3s for JS to load
-          elements: [{ selector: 'body' }]
+          gotoOptions: { waitUntil: 'networkidle2', timeout: 15000 }
         })
       });
 
@@ -39,8 +38,7 @@ export default async function handler(req, res) {
         throw new Error('Browserless error: ' + browserlessRes.status + ' ' + err.slice(0, 200));
       }
 
-      const data = await browserlessRes.json();
-      const bodyText = data?.data?.[0]?.results?.[0]?.text || '';
+      const bodyText = await browserlessRes.text();
 
       const sessions = parseSchedulePage(bodyText, date);
       return res.status(200).json({ source: 'unfccc-schedule', date, fetchedAt: new Date().toISOString(), sessions });
@@ -54,48 +52,55 @@ export default async function handler(req, res) {
   }
 }
 
-// ── PARSE UNFCCC SCHEDULE PAGE TEXT ─────────────────────────────
-// The rendered page text contains lines like:
-// "10:00 - 11:00  SBSTA 64 opening plenary  Plenary Hall  Open"
-function parseSchedulePage(text, date) {
+// ── PARSE UNFCCC SCHEDULE PAGE HTML ─────────────────────────────
+function parseSchedulePage(html, date) {
   const sessions = [];
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+
+  // Strip HTML tags to get plain text
+  const text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ')
+    .replace(/\s+/g, ' ');
 
   const FOREST_KW = ['forest','deforest','redd','lulucf','land use','nairobi work','nwp',
-    'nature-based','nature based','nbs','ecosystem','biodiversity','restoration','landscape',
+    'nature-based','nature based','nbs ','ecosystem','biodiversity','restoration','landscape',
     'mangrove','wetland','peatland','rio convention','synerg','unccd','cbd','taff','woodland',
     'agroforest','savanna','conservation','habitat','agriculture','food','sjwa','koronivia',
-    'mountains','mountain','adaptation','resilience','loss and damage','article 6'];
+    'mountain','adaptation','resilience','loss and damage','article 6'];
 
-  const timeRegex = /^(\d{1,2}:\d{2})\s*[–\-—to]+\s*(\d{1,2}:\d{2})/;
+  // Match time patterns like "10:00 - 11:00" or "10:00–11:00"
+  const timeRegex = /(\d{1,2}:\d{2})\s*[-–—to]+\s*(\d{1,2}:\d{2})/g;
+  const chunks = text.split(timeRegex);
 
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const timeMatch = line.match(timeRegex);
+  for (let i = 1; i < chunks.length - 1; i += 3) {
+    const startTime = chunks[i];
+    const endTime   = chunks[i + 1];
+    const body      = (chunks[i + 2] || '').slice(0, 400).trim();
 
-    if (timeMatch) {
-      // Collect context: this line + next few lines
-      const block = lines.slice(i, i + 5).join(' ');
-      const lower = block.toLowerCase();
+    if (!startTime || !endTime) continue;
 
-      const isForest = FOREST_KW.some(kw => lower.includes(kw));
-      const isOpen = lower.includes('open') || lower.includes('plenary') || lower.includes('webcast');
-      const isNego = lower.includes('contact group') || lower.includes('informal') ||
-                     lower.includes('negotiat') || lower.includes('sbsta') || lower.includes('sbi');
+    const lower = body.toLowerCase();
+    const isForest = FOREST_KW.some(kw => lower.includes(kw));
+    const isOpen   = lower.includes('open') || lower.includes('plenary') || lower.includes('webcast');
+    const isNego   = lower.includes('contact group') || lower.includes('informal') ||
+                     lower.includes('sbsta') || lower.includes('sbi ');
 
+    // Extract a reasonable title from the body text (first 80 chars, clean up)
+    const title = body.replace(/\s+/g, ' ').slice(0, 100).trim();
+    // Try to find room (usually a word like "Nairobi", "Wien", "Plenary", "Berlin", "Bonn")
+    const roomMatch = body.match(/\b(Nairobi|Wien|Genf|Berlin|Bonn|Plenary Hall|New York|Paris|Sydney|Bern)\b/i);
+
+    if (isNego || isForest) {
       sessions.push({
-        time: timeMatch[1] + '–' + timeMatch[2],
-        title: lines[i + 1] || block.slice(0, 80),
-        room: lines[i + 2] || '',
+        time: startTime + '\u2013' + endTime,
+        title: title,
+        room: roomMatch ? roomMatch[1] : '',
         isForest,
         isOpen,
-        isNego,
-        raw: block.slice(0, 200)
+        isNego
       });
-      i += 3;
-    } else {
-      i++;
     }
   }
 
