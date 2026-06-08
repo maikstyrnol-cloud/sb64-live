@@ -475,7 +475,7 @@ function buildContent() {
         <div id="nego-live-${d.id}"></div>
                 ${negoEvs.length  ? `<div class="sh">Negotiations</div><div class="cards" id="nego-${d.id}">${negoEvs.map(mkCard).join('')}</div>` : ''}
         ${otherEvs.length ? `<div class="sh">Side events &amp; mandated events</div><div class="cards" id="other-${d.id}">${otherEvs.map(mkCard).join('')}</div>` : ''}
-        <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.9rem;font-family:'IBM Plex Mono',monospace;">
+        <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.9rem;font-family:monospace;">
           Click any card to expand &nbsp;·&nbsp;
           <a href="https://unfccc.int/sb64/schedule?date=2026-06-${String(d.n).padStart(2,'0')}&type=Negotiations" target="_blank" style="color:var(--text-light)">UNFCCC negotiations for this day ↗</a>
         </p>`;
@@ -530,7 +530,7 @@ function buildContent() {
       <tbody id="ntb2"></tbody>
     </table>
 
-    <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:'IBM Plex Mono',monospace;">
+    <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:monospace;">
       Source: UNFCCC Overview Schedule v1, 4 May 2026. Exact times confirmed in the Daily Programme each morning.
     </p>`;
 
@@ -717,92 +717,89 @@ function updateNL() {
 function prevND() { if (ndIdx > 0) { ndIdx--; updateNL(); } }
 function nextND() { if (ndIdx < CONF_DATES.length - 1) { ndIdx++; updateNL(); } }
 
-// ════════════════════════════════════════════════
-// LIVE NEGOTIATIONS FETCH (via Browserless)
-// ════════════════════════════════════════════════
-let negoCache = {}; // date -> sessions array
-let negoFetching = {};
+let negoCache = {};
+
+function negoCard(s, forest) {
+  var card = document.createElement('div');
+  card.className = 'nego-live-card' + (forest ? ' forest' : '');
+  var meta = '<div class="cmeta">' +
+    '<span class="ctime">' + (s.time||'') + '</span>' +
+    '<span class="ctag ct-nego">Negotiation</span>' +
+    (s.isOpen ? '<span class="ctag ct-online">Open</span>' : '') +
+    (s.room ? '<span class="croom">' + s.room + '</span>' : '') +
+    '</div>';
+  var title = '<div class="ctitle">' + (s.title||'') + '</div>';
+  card.innerHTML = meta + title;
+  return card.outerHTML;
+}
 
 async function fetchNegotiations(dayId) {
-  const d = DAYS.find(d => d.id === dayId);
+  var d = DAYS.find(function(d){ return d.id === dayId; });
   if (!d || d.closed) return;
-
-  const date = '2026-06-' + String(d.n).padStart(2, '0');
-  const slot = document.getElementById('nego-live-' + dayId);
+  var date = '2026-06-' + String(d.n).padStart(2, '0');
+  var slot = document.getElementById('nego-live-' + dayId);
   if (!slot) return;
 
-  // Show loading state
-  slot.innerHTML = `
-    <div class="sh">Live negotiations — today's schedule</div>
-    <div class="ibar teal" style="margin-bottom:0.5rem">
-      <span class="spinner"></span> Fetching live schedule from UNFCCC…
-    </div>`;
+  var shDiv = '<div class="sh">Live negotiations</div>';
+  slot.innerHTML = shDiv + '<div class="ibar teal"><span class="spinner"></span> Fetching from UNFCCC...</div>';
 
   try {
-    const res = await fetch('/api/schedule?source=negotiations&date=' + date);
+    var res = await fetch('/api/schedule?source=negotiations&date=' + date);
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    var data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const sessions = data.sessions || [];
+    var sessions = data.sessions || [];
     negoCache[date] = sessions;
 
     if (sessions.length === 0) {
-      slot.innerHTML = `
-        <div class="sh">Live negotiations — today's schedule</div>
-        <div class="ibar teal">No sessions found yet for today. UNFCCC updates this throughout the day — <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="margin-left:0.5rem">Refresh</button></div>`;
+      slot.innerHTML = shDiv + '<div class="ibar teal">No sessions confirmed yet for this day. UNFCCC adds them throughout the day.</div>';
       return;
     }
 
-    // Filter: show all, highlight forest-relevant
-    const forestSessions = sessions.filter(s => s.isForest);
-    const otherSessions  = sessions.filter(s => !s.isForest);
+    var forestSessions = sessions.filter(function(s){ return s.isForest; });
+    var otherSessions  = sessions.filter(function(s){ return !s.isForest; });
 
-    let html = '<div class="sh">Live negotiations — today's schedule</div>';
+    var html = shDiv;
 
     if (forestSessions.length) {
-      html += '<div style="margin-bottom:0.4rem;font-family:IBM Plex Mono,monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)">⭐ Forest / NbS relevant</div>';
-      html += forestSessions.map(s => `
-        <div class="nego-live-card forest">
-          <div class="cmeta">
-            <span class="ctime">${s.time}</span>
-            <span class="ctag ct-nego">Negotiation</span>
-            ${s.isOpen ? '<span class="ctag ct-online">Open / Webcast</span>' : ''}
-            ${s.room ? '<span class="croom">' + s.room + '</span>' : ''}
-          </div>
-          <div class="ctitle">${s.title}</div>
-        </div>`).join('');
+      html += '<div style="margin-bottom:0.4rem;font-family:monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)">⭐ Forest / NbS relevant</div>';
+      forestSessions.forEach(function(s){ html += negoCard(s, true); });
     }
 
     if (otherSessions.length) {
-      html += '<div style="margin:0.7rem 0 0.4rem;font-family:IBM Plex Mono,monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light)">Other sessions today</div>';
-      html += otherSessions.map(s => `
-        <div class="nego-live-card">
-          <div class="cmeta">
-            <span class="ctime">${s.time}</span>
-            <span class="ctag ct-nego">Negotiation</span>
-            ${s.isOpen ? '<span class="ctag ct-online">Open</span>' : ''}
-            ${s.room ? '<span class="croom">' + s.room + '</span>' : ''}
-          </div>
-          <div class="ctitle">${s.title}</div>
-        </div>`).join('');
+      html += '<div style="margin:0.7rem 0 0.4rem;font-family:monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light)">Other sessions</div>';
+      otherSessions.forEach(function(s){ html += negoCard(s, false); });
     }
 
-    html += `<p style="font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:'IBM Plex Mono',monospace;">
-      Last fetched: ${new Date(data.fetchedAt).toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'})} CET &nbsp;·&nbsp;
-      <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="font-size:0.63rem;padding:0.15rem 0.5rem;">↻ Refresh</button>
-      &nbsp;·&nbsp; <a href="https://unfccc.int/sb64/schedule?date=${date}" target="_blank" style="color:var(--text-light)">Open on UNFCCC ↗</a>
-    </p>`;
+    var ft = new Date(data.fetchedAt).toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'});
+    var refreshBtn = document.createElement('button');
+    refreshBtn.className = 'nego-fetch-btn';
+    refreshBtn.style = 'font-size:0.63rem;padding:0.15rem 0.5rem;';
+    refreshBtn.textContent = '↻ Refresh';
+    refreshBtn.setAttribute('data-day', dayId);
+    refreshBtn.setAttribute('data-date', date);
+    refreshBtn.onclick = function() {
+      negoCache[this.getAttribute('data-date')] = null;
+      fetchNegotiations(this.getAttribute('data-day'));
+    };
 
     slot.innerHTML = html;
+    var footer = document.createElement('p');
+    footer.style = 'font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:IBM Plex Mono,monospace;';
+    footer.innerHTML = 'Last fetched: ' + ft + ' CET &nbsp;·&nbsp; ';
+    footer.appendChild(refreshBtn);
+    footer.innerHTML += ' &nbsp;·&nbsp; <a href="https://unfccc.int/sb64/schedule?date=' + date + '" target="_blank" style="color:var(--text-light)">Open on UNFCCC ↗</a>';
+    slot.appendChild(footer);
 
   } catch(err) {
-    slot.innerHTML = `
-      <div class="sh">Live negotiations</div>
-      <div class="ibar red">⚠ Could not fetch live schedule (${err.message}).
-        <a href="https://unfccc.int/sb64/schedule?date=${date}" target="_blank" style="margin-left:0.5rem;text-decoration:underline">Open UNFCCC directly ↗</a>
-        <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="margin-left:0.5rem">Retry</button>
-      </div>`;
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'nego-fetch-btn';
+    retryBtn.style = 'margin-left:0.5rem';
+    retryBtn.textContent = 'Retry';
+    retryBtn.onclick = function(){ fetchNegotiations(dayId); };
+    slot.innerHTML = shDiv + '<div class="ibar red">⚠ Could not fetch (' + err.message + '). <a href="https://unfccc.int/sb64/schedule?date=' + date + '" target="_blank" style="text-decoration:underline">Open UNFCCC ↗</a></div>';
+    slot.querySelector('.ibar').appendChild(retryBtn);
   }
 }
 
