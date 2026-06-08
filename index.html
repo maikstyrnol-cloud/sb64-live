@@ -126,6 +126,14 @@ button { font-family: inherit; cursor: pointer; }
 .cbody { font-size: 0.76rem; color: var(--text-mid); line-height: 1.55; margin-top: 0.38rem; display: none; }
 .card.open .cbody { display: block; }
 .corgs { font-size: 0.67rem; color: var(--text-light); margin-top: 0.28rem; font-style: italic; }
+/* Live negotiations */
+.nego-live-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--teal); border-radius: var(--r); padding: 0.65rem 0.95rem; margin-bottom: 0.38rem; }
+.nego-live-card.forest { border-left-color: var(--gold); box-shadow: 0 0 0 1px rgba(200,150,28,0.15); }
+.nego-live-card.new { border-color: #4ade80; }
+.nego-fetch-btn { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--fsc); color: #fff; border: none; border-radius: 4px; padding: 0.35rem 0.8rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: background 0.12s; }
+.nego-fetch-btn:hover { background: var(--fsc-mid); }
+.nego-fetch-btn:disabled { background: var(--text-light); cursor: default; }
+
 .wcbtn { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.42rem; font-size: 0.68rem; font-weight: 500; color: var(--blue); text-decoration: none; border: 1px solid var(--blue-br); background: var(--blue-bg); padding: 0.18rem 0.52rem; border-radius: 4px; transition: background 0.12s; }
 .wcbtn:hover { background: #dbeafe; }
 
@@ -286,6 +294,7 @@ const E = {
 d08:[
   {type:'online',star:true, time:'10:00+',  room:'Plenary · Webcast', title:'SBSTA 64 & SBI 64 Opening Plenaries', desc:'Both bodies open formally. Watch how forests, NbS, and Rio Conventions are framed in the workplan.', webcast:'https://unfccc.int/sb64'},
   {type:'nego',  star:false,time:'Afternoon',room:'Contact groups',   title:'Negotiations begin — all SBSTA & SBI items', desc:'First contact groups. Key: Nairobi Work Programme (NWP — ecosystems/NbS), SJWA (food+land across Rio Conventions), methodological matters incl. LULUCF.', webcast:'https://unfccc.int/sb64/schedule?date=2026-06-08&type=Negotiations'},
+  {type:'side',  star:true, time:'10:30–11:45',room:'Bonn 1/2/3',    title:'Science-based insights for building a strong and sustained Deforestation Roadmap', desc:'Woodwell Climate Research Center, IPAM, and EESI present science-based evidence for strengthening the global Deforestation Roadmap. Directly relevant to the Forest Roadmap and REDD+ monitoring.', orgs:'Woodwell Climate Research Center · IPAM · EESI'},
   {type:'side',  star:false,time:'15:00–16:15',room:'Kaminzimmer',   title:'Foro Global de Comunidades Locales', desc:'Global Forum of Local Communities (Africa, Asia, LatAm). REDD+ social safeguards, rights recognition.', orgs:'RED MOCAF · Utz Che&#39; · ICV (Brazil)'},
   {type:'side',  star:false,time:'16:30–17:45',room:'Bonn',          title:'Santa Marta and Beyond: Delivering on the TAFF', desc:'COP30 Presidency TAFF Roadmap (Transformative Action on Forests and Futures) — civil society and faith perspectives.', orgs:'CIDSE · OPAN · Swiss Lenten Fund'},
 ],
@@ -367,7 +376,7 @@ const NW2 = [
   {day:'Thu 18',title:'Closing Plenaries',              body:'SBSTA 64 + SBI 64', forest:true,  badge:true, online:true,  note:'Adoption of agreed conclusions. Watch for NWP/NbS, SJWA, Rio Conventions cooperation, Mountain Dialogue oral summary.'},
 ];
 
-const FOREST_KW = ['forest','deforest','redd','lulucf','land use','nature-based','nature based','nbs','ecosystem','biodiversity','restoration','landscape','mangrove','wetland','peatland','rio convention','synerg','unccd','cbd','taff','woodland','agroforest','savanna','conservation','habitat'];
+const FOREST_KW = ['forest','deforest','deforestation','redd','lulucf','land use','nature-based','nature based','nbs','ecosystem','biodiversity','restoration','landscape','mangrove','wetland','peatland','rio convention','synerg','unccd','cbd','taff','woodland','agroforest','savanna','conservation','habitat'];
 
 // ════════════════════════════════════════════════
 // STATE
@@ -463,6 +472,7 @@ function buildContent() {
         </div>
         ${bar}
         <div id="live-slot-${d.id}"></div>
+        <div id="nego-live-${d.id}"></div>
                 ${negoEvs.length  ? `<div class="sh">Negotiations</div><div class="cards" id="nego-${d.id}">${negoEvs.map(mkCard).join('')}</div>` : ''}
         ${otherEvs.length ? `<div class="sh">Side events &amp; mandated events</div><div class="cards" id="other-${d.id}">${otherEvs.map(mkCard).join('')}</div>` : ''}
         <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.9rem;font-family:'IBM Plex Mono',monospace;">
@@ -651,6 +661,12 @@ function showDay(id) {
   const dv = document.getElementById('view-' + id);
   if (dv) dv.classList.add('active');
   applyFilter();
+  // Fetch live negotiations for this day if not already cached
+  const d = DAYS.find(d => d.id === id);
+  if (d && !d.closed) {
+    const date = '2026-06-' + String(d.n).padStart(2, '0');
+    if (!negoCache[date]) fetchNegotiations(id);
+  }
 }
 
 function switchMain(m) {
@@ -701,6 +717,95 @@ function updateNL() {
 function prevND() { if (ndIdx > 0) { ndIdx--; updateNL(); } }
 function nextND() { if (ndIdx < CONF_DATES.length - 1) { ndIdx++; updateNL(); } }
 
+// ════════════════════════════════════════════════
+// LIVE NEGOTIATIONS FETCH (via Browserless)
+// ════════════════════════════════════════════════
+let negoCache = {}; // date -> sessions array
+let negoFetching = {};
+
+async function fetchNegotiations(dayId) {
+  const d = DAYS.find(d => d.id === dayId);
+  if (!d || d.closed) return;
+
+  const date = '2026-06-' + String(d.n).padStart(2, '0');
+  const slot = document.getElementById('nego-live-' + dayId);
+  if (!slot) return;
+
+  // Show loading state
+  slot.innerHTML = `
+    <div class="sh">Live negotiations — today's schedule</div>
+    <div class="ibar teal" style="margin-bottom:0.5rem">
+      <span class="spinner"></span> Fetching live schedule from UNFCCC…
+    </div>`;
+
+  try {
+    const res = await fetch('/api/schedule?source=negotiations&date=' + date);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const sessions = data.sessions || [];
+    negoCache[date] = sessions;
+
+    if (sessions.length === 0) {
+      slot.innerHTML = `
+        <div class="sh">Live negotiations — today's schedule</div>
+        <div class="ibar teal">No sessions found yet for today. UNFCCC updates this throughout the day — <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="margin-left:0.5rem">Refresh</button></div>`;
+      return;
+    }
+
+    // Filter: show all, highlight forest-relevant
+    const forestSessions = sessions.filter(s => s.isForest);
+    const otherSessions  = sessions.filter(s => !s.isForest);
+
+    let html = '<div class="sh">Live negotiations — today's schedule</div>';
+
+    if (forestSessions.length) {
+      html += '<div style="margin-bottom:0.4rem;font-family:IBM Plex Mono,monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)">⭐ Forest / NbS relevant</div>';
+      html += forestSessions.map(s => `
+        <div class="nego-live-card forest">
+          <div class="cmeta">
+            <span class="ctime">${s.time}</span>
+            <span class="ctag ct-nego">Negotiation</span>
+            ${s.isOpen ? '<span class="ctag ct-online">Open / Webcast</span>' : ''}
+            ${s.room ? '<span class="croom">' + s.room + '</span>' : ''}
+          </div>
+          <div class="ctitle">${s.title}</div>
+        </div>`).join('');
+    }
+
+    if (otherSessions.length) {
+      html += '<div style="margin:0.7rem 0 0.4rem;font-family:IBM Plex Mono,monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light)">Other sessions today</div>';
+      html += otherSessions.map(s => `
+        <div class="nego-live-card">
+          <div class="cmeta">
+            <span class="ctime">${s.time}</span>
+            <span class="ctag ct-nego">Negotiation</span>
+            ${s.isOpen ? '<span class="ctag ct-online">Open</span>' : ''}
+            ${s.room ? '<span class="croom">' + s.room + '</span>' : ''}
+          </div>
+          <div class="ctitle">${s.title}</div>
+        </div>`).join('');
+    }
+
+    html += `<p style="font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:'IBM Plex Mono',monospace;">
+      Last fetched: ${new Date(data.fetchedAt).toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'})} CET &nbsp;·&nbsp;
+      <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="font-size:0.63rem;padding:0.15rem 0.5rem;">↻ Refresh</button>
+      &nbsp;·&nbsp; <a href="https://unfccc.int/sb64/schedule?date=${date}" target="_blank" style="color:var(--text-light)">Open on UNFCCC ↗</a>
+    </p>`;
+
+    slot.innerHTML = html;
+
+  } catch(err) {
+    slot.innerHTML = `
+      <div class="sh">Live negotiations</div>
+      <div class="ibar red">⚠ Could not fetch live schedule (${err.message}).
+        <a href="https://unfccc.int/sb64/schedule?date=${date}" target="_blank" style="margin-left:0.5rem;text-decoration:underline">Open UNFCCC directly ↗</a>
+        <button onclick="fetchNegotiations('${dayId}')" class="nego-fetch-btn" style="margin-left:0.5rem">Retry</button>
+      </div>`;
+  }
+}
+
 function tickTs() {
   const s = new Date().toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'}) + ' CET';
   const ft = document.getElementById('frTs'); if (ft) ft.textContent = 'Refreshed ' + s;
@@ -731,6 +836,17 @@ if (DM[todayStr]) {
 tickTs();
 fetchLive();
 setInterval(fetchLive, 3 * 60 * 1000);
+// Auto-refresh negotiations for active day every 5 minutes
+setInterval(() => {
+  if (activeDay) {
+    const d = DAYS.find(d => d.id === activeDay);
+    if (d && !d.closed) {
+      const date = '2026-06-' + String(d.n).padStart(2, '0');
+      negoCache[date] = null; // clear cache to force refresh
+      fetchNegotiations(activeDay);
+    }
+  }
+}, 5 * 60 * 1000);
 </script>
 </body>
 </html>
