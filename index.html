@@ -127,12 +127,14 @@ button { font-family: inherit; cursor: pointer; }
 .card.open .cbody { display: block; }
 .corgs { font-size: 0.67rem; color: var(--text-light); margin-top: 0.28rem; font-style: italic; }
 /* Live negotiations */
-.nego-live-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--teal); border-radius: var(--r); padding: 0.65rem 0.95rem; margin-bottom: 0.38rem; }
-.nego-live-card.forest { border-left-color: var(--gold); box-shadow: 0 0 0 1px rgba(200,150,28,0.15); }
-.nego-live-card.new { border-color: #4ade80; }
-.nego-fetch-btn { display: inline-flex; align-items: center; gap: 0.4rem; background: var(--fsc); color: #fff; border: none; border-radius: 4px; padding: 0.35rem 0.8rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: background 0.12s; }
-.nego-fetch-btn:hover { background: var(--fsc-mid); }
-.nego-fetch-btn:disabled { background: var(--text-light); cursor: default; }
+.star-btn { position: absolute; top: 0.55rem; right: 0.65rem; background: none; border: none; font-size: 1rem; cursor: pointer; opacity: 0.3; transition: opacity 0.15s, transform 0.15s; line-height: 1; padding: 0.1rem 0.2rem; }
+.star-btn:hover { opacity: 0.7; transform: scale(1.2); }
+.star-btn.starred { opacity: 1; }
+.card { position: relative; padding-right: 2rem; }
+.nego-link-panel { background: var(--teal-bg); border: 1px solid var(--teal-br); border-radius: var(--r); padding: 0.65rem 0.95rem; margin-bottom: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.nego-link-panel p { font-size: 0.76rem; color: #064e3b; }
+.nego-open-btn { display: inline-flex; align-items: center; gap: 0.35rem; background: var(--fsc); color: #fff; border: none; border-radius: 4px; padding: 0.38rem 0.85rem; font-size: 0.74rem; font-weight: 600; cursor: pointer; text-decoration: none; white-space: nowrap; transition: background 0.12s; }
+.nego-open-btn:hover { background: var(--fsc-mid); }
 
 .wcbtn { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.42rem; font-size: 0.68rem; font-weight: 500; color: var(--blue); text-decoration: none; border: 1px solid var(--blue-br); background: var(--blue-bg); padding: 0.18rem 0.52rem; border-radius: 4px; transition: background 0.12s; }
 .wcbtn:hover { background: #dbeafe; }
@@ -245,8 +247,9 @@ button { font-family: inherit; cursor: pointer; }
 <!-- ── FILTER ROW ── -->
 <div class="filter-row" id="filterRow">
   <button class="chip active" onclick="filterCards('all',this)">All</button>
-  <button class="chip" onclick="filterCards('online',this)">Webcast</button>
+  <button class="chip" onclick="filterCards('star',this)">Forest priority</button>
   <button class="chip" onclick="filterCards('side',this)">Side events</button>
+  <button class="chip" onclick="filterCards('online',this)">Webcast</button>
   <button class="chip" onclick="filterCards('nego',this)">Negotiations</button>
   <button class="chip" onclick="filterCards('star',this)">⭐ Forest priority</button>
   <div class="fr-spacer"></div>
@@ -466,6 +469,7 @@ function buildContent() {
           </div>
           <div class="ctitle">${e.title}</div>
           <div class="cbody">${e.desc}${e.orgs ? `<div class="corgs">${e.orgs}</div>` : ''}${wc}</div>
+        <button class="star-btn" title="Star this event" onclick="event.stopPropagation();toggleStar(this)" data-key="${e.type}-${e.title.slice(0,40).replace(/[^a-z0-9]/gi,'_')}">&#9733;</button>
         </div>`;
       };
 
@@ -477,7 +481,10 @@ function buildContent() {
         </div>
         ${bar}
         <div id="live-slot-${d.id}"></div>
-        <div id="nego-live-${d.id}"></div>
+        <div class="nego-link-panel">
+          <p>Negotiations schedule updates live on UNFCCC throughout the day.</p>
+          <a class="nego-open-btn" href="https://unfccc.int/sb64/schedule?date=2026-06-${String(d.n).padStart(2,'0')}&type=Negotiations" target="_blank">Open today's negotiations ↗</a>
+        </div>
                 ${negoEvs.length  ? `<div class="sh">Negotiations</div><div class="cards" id="nego-${d.id}">${negoEvs.map(mkCard).join('')}</div>` : ''}
         ${otherEvs.length ? `<div class="sh">Side events &amp; mandated events</div><div class="cards" id="other-${d.id}">${otherEvs.map(mkCard).join('')}</div>` : ''}
         <p style="font-size:0.63rem;color:var(--text-light);margin-top:0.9rem;font-family:monospace;">
@@ -597,12 +604,11 @@ async function fetchLive() {
       }
     });
 
+    window._allSeors = all;
     liveEvents = all.filter(ev => isForest(ev.title, ev.desc));
     updateLiveBanner(newForest, all.length);
     injectLiveCards();
 
-    // Also fetch special/mandated events once
-    if (!specialsFetched) fetchSpecials();
 
     st.textContent = '✓ Updated ' + new Date().toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'});
     st.className = 'fetch-status ok';
@@ -629,31 +635,70 @@ function updateLiveBanner(newF, total) {
 }
 
 function injectLiveCards() {
-  DAYS.forEach(d => {
-    const slot = document.getElementById('live-slot-' + d.id);
+  // Build set of pre-loaded titles to avoid duplicates
+  var preloaded = new Set();
+  document.querySelectorAll('.ctitle').forEach(function(el){
+    preloaded.add(el.textContent.trim().toLowerCase());
+  });
+
+  DAYS.forEach(function(d) {
+    var slot = document.getElementById('live-slot-' + d.id);
     if (!slot) return;
-    const matched = liveEvents.filter(ev => {
+
+    // Use ALL seors events (not just forest-filtered)
+    var allEvs = window._allSeors || liveEvents;
+    var matched = allEvs.filter(function(ev) {
       if (!ev.date) return false;
-      const s = ev.date + '';
+      var s = String(ev.date);
       return s.includes(String(d.n) + ' Jun') || s.includes(' ' + d.n + ' ');
     });
-    if (!matched.length) { slot.innerHTML = ''; return; }
+    var fresh = matched.filter(function(ev){
+      return !preloaded.has((ev.title||'').trim().toLowerCase());
+    });
+    if (!fresh.length) { slot.innerHTML = ''; return; }
 
-    const cards = matched.map(ev => {
-      const isNew = !Array.from(seenTitles).slice(0, -matched.length).includes(ev.title);
-      return `<div class="card t-side live-new" onclick="this.classList.toggle('open')">
-        <div class="cmeta">
-          ${ev.time ? `<span class="ctime">${ev.time}</span>` : ''}
-          <span class="ctag ct-live">🔴 LIVE from SEORS</span>
-          ${isNew ? '<span class="ctag ct-new">🆕 New</span>' : ''}
-          ${ev.room ? `<span class="croom">${ev.room}</span>` : ''}
-        </div>
-        <div class="ctitle">${ev.title}</div>
-        ${ev.desc ? `<div class="cbody">${ev.desc}</div>` : ''}
-      </div>`;
-    }).join('');
+    var sh = document.createElement('div');
+    sh.className = 'sh'; sh.textContent = 'Side events from SEORS';
+    var cardsDiv = document.createElement('div');
+    cardsDiv.className = 'cards';
 
-    slot.innerHTML = `<div class="sh">Live — forest-relevant additions from SEORS</div><div class="cards">${cards}</div>`;
+    fresh.forEach(function(ev) {
+      var forest = isForest(ev.title, ev.desc);
+      var isNew = !Array.from(seenTitles).slice(0,-fresh.length).includes(ev.title);
+      var key = 'seors_' + (ev.title||'').slice(0,40).replace(/[^a-z0-9]/gi,'_').toLowerCase();
+
+      var card = document.createElement('div');
+      card.className = 'card t-side' + (forest ? ' star' : '');
+      card.dataset.type = 'side';
+      card.dataset.star = forest ? '1' : '0';
+      card.addEventListener('click', function(){ this.classList.toggle('open'); });
+
+      // Meta row
+      var meta = document.createElement('div'); meta.className = 'cmeta';
+      if (ev.time) { var ct = document.createElement('span'); ct.className='ctime'; ct.textContent=ev.time; meta.appendChild(ct); }
+      var tag = document.createElement('span'); tag.className='ctag ct-side'; tag.textContent='Side event'; meta.appendChild(tag);
+      if (forest) { var ft=document.createElement('span'); ft.className='ctag ct-star'; ft.textContent='\u2B50 Forest priority'; meta.appendChild(ft); }
+      if (isNew)  { var nt=document.createElement('span'); nt.className='ctag ct-new';  nt.textContent='New'; meta.appendChild(nt); }
+      if (ev.room){ var rm=document.createElement('span'); rm.className='croom'; rm.textContent=ev.room; meta.appendChild(rm); }
+      card.appendChild(meta);
+
+      var title = document.createElement('div'); title.className='ctitle'; title.textContent=ev.title||''; card.appendChild(title);
+      var body  = document.createElement('div'); body.className='cbody';  body.textContent=ev.desc||'';
+      if (ev.orgs){ var og=document.createElement('div'); og.className='corgs'; og.textContent=ev.orgs; body.appendChild(og); }
+      card.appendChild(body);
+
+      var star = document.createElement('button');
+      star.className = 'star-btn' + (starred[key] ? ' starred' : '');
+      star.title='Star this event'; star.dataset.key=key; star.textContent='\u2605';
+      star.addEventListener('click', function(e){ e.stopPropagation(); toggleStar(this); });
+      card.appendChild(star);
+
+      cardsDiv.appendChild(card);
+    });
+
+    slot.innerHTML = '';
+    slot.appendChild(sh);
+    slot.appendChild(cardsDiv);
   });
 }
 
@@ -669,12 +714,7 @@ function showDay(id) {
   const dv = document.getElementById('view-' + id);
   if (dv) dv.classList.add('active');
   applyFilter();
-  // Fetch live negotiations for this day if not already cached
-  const d = DAYS.find(d => d.id === id);
-  if (d && !d.closed) {
-    const date = '2026-06-' + String(d.n).padStart(2, '0');
-    if (!negoCache[date]) fetchNegotiations(id);
-  }
+  initStars();
 }
 
 function switchMain(m) {
@@ -704,13 +744,15 @@ function filterCards(f, btn) {
 }
 
 function applyFilter() {
-  document.querySelectorAll('.card').forEach(c => {
-    const t = c.dataset.type, s = c.dataset.star === '1';
-    let show = true;
+  document.querySelectorAll('.card').forEach(function(c) {
+    var t = c.dataset.type, s = c.dataset.star === '1';
+    var key = c.querySelector('.star-btn') ? c.querySelector('.star-btn').dataset.key : '';
+    var isStarred = starred[key] ? true : false;
+    var show = true;
     if      (activeFilter === 'online') show = (t === 'online' || t === 'mandate');
     else if (activeFilter === 'side')   show = (t === 'side'   || t === 'mandate');
     else if (activeFilter === 'nego')   show = (t === 'nego');
-    else if (activeFilter === 'star')   show = s;
+    else if (activeFilter === 'star')   show = (s || isStarred);
     c.style.display = show ? '' : 'none';
   });
 }
@@ -725,143 +767,25 @@ function updateNL() {
 function prevND() { if (ndIdx > 0) { ndIdx--; updateNL(); } }
 function nextND() { if (ndIdx < CONF_DATES.length - 1) { ndIdx++; updateNL(); } }
 
-let negoCache = {};
+// ── STAR RATING (localStorage) ──────────────────────────────────
+var starred = JSON.parse(localStorage.getItem('sb64stars') || '{}');
 
-function negoCard(s, forest) {
-  var card = document.createElement('div');
-  card.className = 'nego-live-card' + (forest ? ' forest' : '');
-  var meta = '<div class="cmeta">' +
-    '<span class="ctime">' + (s.time||'') + '</span>' +
-    '<span class="ctag ct-nego">Negotiation</span>' +
-    (s.isOpen ? '<span class="ctag ct-online">Open</span>' : '') +
-    (s.room ? '<span class="croom">' + s.room + '</span>' : '') +
-    '</div>';
-  var title = '<div class="ctitle">' + (s.title||'') + '</div>';
-  card.innerHTML = meta + title;
-  return card.outerHTML;
-}
-
-async function fetchNegotiations(dayId) {
-  var d = DAYS.find(function(d){ return d.id === dayId; });
-  if (!d || d.closed) return;
-  var date = '2026-06-' + String(d.n).padStart(2, '0');
-  var slot = document.getElementById('nego-live-' + dayId);
-  if (!slot) return;
-
-  var shDiv = '<div class="sh">Live negotiations</div>';
-  slot.innerHTML = shDiv + '<div class="ibar teal"><span class="spinner"></span> Fetching from UNFCCC...</div>';
-
-  try {
-    var res = await fetch('/api/schedule?source=negotiations&date=' + date);
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    var data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    var sessions = data.sessions || [];
-    negoCache[date] = sessions;
-
-    if (sessions.length === 0) {
-      slot.innerHTML = shDiv + '<div class="ibar teal">No sessions confirmed yet for this day. UNFCCC adds them throughout the day.</div>';
-      return;
-    }
-
-    var forestSessions = sessions.filter(function(s){ return s.isForest; });
-    var otherSessions  = sessions.filter(function(s){ return !s.isForest; });
-
-    var html = shDiv;
-
-    if (forestSessions.length) {
-      html += '<div style="margin-bottom:0.4rem;font-family:monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)">⭐ Forest / NbS relevant</div>';
-      forestSessions.forEach(function(s){ html += negoCard(s, true); });
-    }
-
-    if (otherSessions.length) {
-      html += '<div style="margin:0.7rem 0 0.4rem;font-family:monospace;font-size:0.58rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-light)">Other sessions</div>';
-      otherSessions.forEach(function(s){ html += negoCard(s, false); });
-    }
-
-    var ft = new Date(data.fetchedAt).toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'});
-    var refreshBtn = document.createElement('button');
-    refreshBtn.className = 'nego-fetch-btn';
-    refreshBtn.style = 'font-size:0.63rem;padding:0.15rem 0.5rem;';
-    refreshBtn.textContent = '↻ Refresh';
-    refreshBtn.setAttribute('data-day', dayId);
-    refreshBtn.setAttribute('data-date', date);
-    refreshBtn.onclick = function() {
-      negoCache[this.getAttribute('data-date')] = null;
-      fetchNegotiations(this.getAttribute('data-day'));
-    };
-
-    slot.innerHTML = html;
-    var footer = document.createElement('p');
-    footer.style = 'font-size:0.63rem;color:var(--text-light);margin-top:0.7rem;font-family:IBM Plex Mono,monospace;';
-    footer.innerHTML = 'Last fetched: ' + ft + ' CET &nbsp;·&nbsp; ';
-    footer.appendChild(refreshBtn);
-    footer.innerHTML += ' &nbsp;·&nbsp; <a href="https://unfccc.int/sb64/schedule?date=' + date + '" target="_blank" style="color:var(--text-light)">Open on UNFCCC ↗</a>';
-    slot.appendChild(footer);
-
-  } catch(err) {
-    var retryBtn = document.createElement('button');
-    retryBtn.className = 'nego-fetch-btn';
-    retryBtn.style = 'margin-left:0.5rem';
-    retryBtn.textContent = 'Retry';
-    retryBtn.onclick = function(){ fetchNegotiations(dayId); };
-    slot.innerHTML = shDiv + '<div class="ibar red">⚠ Could not fetch (' + err.message + '). <a href="https://unfccc.int/sb64/schedule?date=' + date + '" target="_blank" style="text-decoration:underline">Open UNFCCC ↗</a></div>';
-    slot.querySelector('.ibar').appendChild(retryBtn);
+function toggleStar(btn) {
+  var key = btn.dataset.key;
+  if (starred[key]) {
+    delete starred[key];
+    btn.classList.remove('starred');
+  } else {
+    starred[key] = 1;
+    btn.classList.add('starred');
   }
+  localStorage.setItem('sb64stars', JSON.stringify(starred));
+  applyFilter();
 }
 
-let specialsFetched = false;
-let specialEvents = []; // from UNFCCC calendar
-
-async function fetchSpecials() {
-  try {
-    var r = await fetch('/api/schedule?source=specials');
-    if (!r.ok) return;
-    var data = await r.json();
-    if (data.error) return;
-    specialEvents = (data.events || []).filter(function(e) {
-      return e.isForest || FOREST_KW.some(function(kw){ return (e.title||'').toLowerCase().includes(kw); });
-    });
-    specialsFetched = true;
-    injectSpecialCards();
-  } catch(e) {
-    console.warn('Specials fetch failed:', e.message);
-  }
-}
-
-function injectSpecialCards() {
-  // Map special events to days by date string
-  DAYS.forEach(function(d) {
-    var slot = document.getElementById('live-slot-' + d.id);
-    if (!slot) return;
-    var dayStr = String(d.n);
-    var matched = specialEvents.filter(function(ev) {
-      var ds = (ev.date || '').toLowerCase();
-      return ds.includes('jun') && (ds.includes(' ' + dayStr + ' ') || ds.includes(dayStr + ' jun'));
-    });
-    if (!matched.length) return;
-
-    var existing = slot.innerHTML;
-    var cards = matched.map(function(ev) {
-      var c = document.createElement('div');
-      c.className = 'card t-mandate';
-      c.dataset.type = 'mandate';
-      c.dataset.star = '0';
-      c.onclick = function(){ this.classList.toggle('open'); };
-      c.innerHTML = (ev.time ? '<span class="ctime">' + ev.time + '</span>' : '') +
-        '<span class="ctag ct-mandate">Special event</span>' +
-        '<span class="ctag ct-star">⭐ Forest priority</span>' +
-        (ev.room ? '<span class="croom">' + ev.room + '</span>' : '') +
-        '<div class="ctitle">' + (ev.title||'') + '</div>';
-      return c.outerHTML;
-    }).join('');
-
-    if (cards) {
-      slot.innerHTML = existing +
-        '<div class="sh">Mandated &amp; special events (live from UNFCCC)</div>' +
-        '<div class="cards">' + cards + '</div>';
-    }
+function initStars() {
+  document.querySelectorAll('.star-btn').forEach(function(btn) {
+    if (starred[btn.dataset.key]) btn.classList.add('starred');
   });
 }
 
@@ -892,20 +816,11 @@ if (DM[todayStr]) {
   showDay(fallback || 'd08');
 }
 
+initStars();
 tickTs();
 fetchLive();
 setInterval(fetchLive, 3 * 60 * 1000);
-// Auto-refresh negotiations for active day every 5 minutes
-setInterval(() => {
-  if (activeDay) {
-    const d = DAYS.find(d => d.id === activeDay);
-    if (d && !d.closed) {
-      const date = '2026-06-' + String(d.n).padStart(2, '0');
-      negoCache[date] = null; // clear cache to force refresh
-      fetchNegotiations(activeDay);
-    }
-  }
-}, 5 * 60 * 1000);
+
 </script>
 </body>
 </html>
