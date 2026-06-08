@@ -1,132 +1,144 @@
-// api/schedule.js
-// Vercel serverless function — runs on Vercel's servers, bypasses CORS
-// Fetches two UNFCCC sources and returns clean JSON to the browser
-
 export default async function handler(req, res) {
-  // Allow the browser to call this
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 's-maxage=180, stale-while-revalidate'); // 3-min cache on Vercel edge
+  res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate');
 
   const source = req.query.source || 'sideevents';
 
   try {
     if (source === 'sideevents') {
-      // SEORS is plain HTML — we can scrape it
       const url = 'https://seors.unfccc.int/reports/events_list.html?session_id=SB%2064';
       const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; SB64Observer/1.0)',
-          'Accept': 'text/html'
-        }
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SB64Observer/1.0)', 'Accept': 'text/html' }
       });
-
-      if (!response.ok) {
-        return res.status(502).json({ error: 'SEORS fetch failed', status: response.status });
-      }
-
+      if (!response.ok) throw new Error('SEORS fetch failed: ' + response.status);
       const html = await response.text();
       const events = parseSEORS(html);
       return res.status(200).json({ source: 'seors', fetchedAt: new Date().toISOString(), events });
     }
 
-    if (source === 'glance') {
-      // The meetings-at-a-glance page — try to get the raw HTML (partially useful)
+    if (source === 'negotiations') {
       const date = req.query.date || new Date().toISOString().slice(0, 10);
-      const url = `https://unfccc.int/sb64/meetings-at-a-glance`;
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; SB64Observer/1.0)' }
+      const key = process.env.BROWSERLESS_KEY;
+      if (!key) throw new Error('No BROWSERLESS_KEY set');
+
+      // Use Browserless to render the UNFCCC schedule page with JS
+      const targetUrl = `https://unfccc.int/sb64/schedule?date=${date}`;
+
+      const browserlessRes = await fetch(`https://chrome.browserless.io/scrape?token=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: targetUrl,
+          waitFor: 3000, // wait 3s for JS to load
+          elements: [{ selector: 'body' }]
+        })
       });
-      const html = await response.text();
-      // The actual meeting data is loaded by JS so we can't parse it here.
-      // We return a status ping so the frontend knows the site is reachable.
-      return res.status(200).json({
-        source: 'glance',
-        fetchedAt: new Date().toISOString(),
-        reachable: response.ok,
-        note: 'Meetings-at-a-glance is JS-rendered. Use the direct link.'
-      });
+
+      if (!browserlessRes.ok) {
+        const err = await browserlessRes.text();
+        throw new Error('Browserless error: ' + browserlessRes.status + ' ' + err.slice(0, 200));
+      }
+
+      const data = await browserlessRes.json();
+      const bodyText = data?.data?.[0]?.results?.[0]?.text || '';
+
+      const sessions = parseSchedulePage(bodyText, date);
+      return res.status(200).json({ source: 'unfccc-schedule', date, fetchedAt: new Date().toISOString(), sessions });
     }
 
-    return res.status(400).json({ error: 'Unknown source. Use ?source=sideevents or ?source=glance' });
+    return res.status(400).json({ error: 'Unknown source' });
 
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ error: err.message });
   }
 }
 
-// ── SEORS HTML PARSER ────────────────────────────────────────────
-// Extracts side events from the SEORS table HTML
+// ── PARSE UNFCCC SCHEDULE PAGE TEXT ─────────────────────────────
+// The rendered page text contains lines like:
+// "10:00 - 11:00  SBSTA 64 opening plenary  Plenary Hall  Open"
+function parseSchedulePage(text, date) {
+  const sessions = [];
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+
+  const FOREST_KW = ['forest','deforest','redd','lulucf','land use','nairobi work','nwp',
+    'nature-based','nature based','nbs','ecosystem','biodiversity','restoration','landscape',
+    'mangrove','wetland','peatland','rio convention','synerg','unccd','cbd','taff','woodland',
+    'agroforest','savanna','conservation','habitat','agriculture','food','sjwa','koronivia',
+    'mountains','mountain','adaptation','resilience','loss and damage','article 6'];
+
+  const timeRegex = /^(\d{1,2}:\d{2})\s*[–\-—to]+\s*(\d{1,2}:\d{2})/;
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const timeMatch = line.match(timeRegex);
+
+    if (timeMatch) {
+      // Collect context: this line + next few lines
+      const block = lines.slice(i, i + 5).join(' ');
+      const lower = block.toLowerCase();
+
+      const isForest = FOREST_KW.some(kw => lower.includes(kw));
+      const isOpen = lower.includes('open') || lower.includes('plenary') || lower.includes('webcast');
+      const isNego = lower.includes('contact group') || lower.includes('informal') ||
+                     lower.includes('negotiat') || lower.includes('sbsta') || lower.includes('sbi');
+
+      sessions.push({
+        time: timeMatch[1] + '–' + timeMatch[2],
+        title: lines[i + 1] || block.slice(0, 80),
+        room: lines[i + 2] || '',
+        isForest,
+        isOpen,
+        isNego,
+        raw: block.slice(0, 200)
+      });
+      i += 3;
+    } else {
+      i++;
+    }
+  }
+
+  return sessions;
+}
+
+// ── PARSE SEORS HTML ─────────────────────────────────────────────
 function parseSEORS(html) {
   const events = [];
+  const stripTags = s => s.replace(/<[^>]+>/g, ' ').replace(/&amp;/g,'&').replace(/&nbsp;/g,' ').replace(/\s+/g, ' ').trim();
 
-  // Extract table rows — each scheduled event is a table row with date, time, room, organiser, title
-  // Pattern: rows in the main schedule table
   const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-  const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-  const stripTags = s => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  let rowMatch;
 
-  // Find the date headers and event rows
-  // SEORS uses a specific structure: date in first column, time/room, organiser, title
-  const dateHeaderRegex = /(\w+),\s+(\d{1,2}\s+\w+\s+202\d)/g;
+  while ((rowMatch = rowRegex.exec(html)) !== null) {
+    const row = rowMatch[1];
+    const cells = [];
+    const cellRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(row)) !== null) {
+      cells.push(stripTags(cellMatch[1]));
+    }
+    if (cells.length < 3) continue;
 
-  let currentDate = null;
-  const lines = html.split('\n');
+    const dateCell = cells[0] || '';
+    const timeRoom = cells[1] || '';
+    const orgTitle = cells[2] || '';
 
-  // Parse via regex on the full HTML — look for the event table structure
-  // Each event block looks like: Monday, 08 Jun 2026 | 10:30-11:45 Room | Organiser | Title
-  const eventBlockRegex = /(\w+day,\s+\d{2}\s+\w+\s+202\d)[\s\S]*?(\d{2}:\d{2}[–\-—]\d{2}:\d{2})\s+([\w\s]+?)\s*\|[\s\S]*?<strong>([^<]+)<\/strong>/g;
+    const dateMatch = dateCell.match(/(\w+day),?\s+(\d{2}\s+\w+\s+\d{4})/);
+    const timeMatch = timeRoom.match(/(\d{2}:\d{2}[^a-zA-Z\d]*\d{2}:\d{2})/);
+    const roomMatch = timeRoom.match(/\d{2}:\d{2}[^\n]*\n?\s*([A-Za-z][^\n]{1,30})/);
 
-  // Simpler approach: find all <td> content in sequence and group by 5s
-  // Extract all table data cells
-  const allTds = [];
-  let tdMatch;
-  const tdRe = /<td[^>]*class="[^"]*"[^>]*>([\s\S]*?)<\/td>/gi;
-  while ((tdMatch = tdRe.exec(html)) !== null) {
-    allTds.push(stripTags(tdMatch[1]));
-  }
+    const titleMatch = row.match(/<strong>([^<]{10,200})<\/strong>/);
 
-  // The real reliable parse: look for date+time+room patterns
-  // Format in SEORS: "Monday,   08 Jun 2026" then "10:30—11:45   Berlin" then organiser block then title block
-  const dateTimePattern = /(\w+day),\s+(\d{2}\s+\w+\s+\d{4})/g;
-  const timeRoomPattern = /(\d{2}:\d{2}[^\d]+\d{2}:\d{2})\s+([\w]+)/;
-
-  // Best approach for SEORS: parse the known structure
-  // Split on day headers
-  const dayBlocks = html.split(/(?=\|\s*\w+day,\s+\d{2}\s+\w+\s+\d{4})/);
-
-  // Extract structured data using a targeted regex for the SEORS format
-  // Each event: date, time+room, organiser(s) with contact, title+description
-  const masterPattern = /(\w+day),\s+(\d{2}\s+\w+\s+\d{4})[\s\S]*?(\d{2}:\d{2}[^<\d]{1,10}\d{2}:\d{2})\s*([\w\s]{2,20}?)\s*(?:<br|<\/td)[\s\S]*?<strong>([^<]{10,200})<\/strong>\s*([\s\S]*?)(?=(?:\w+day,\s+\d{2}\s+\w+)|$)/g;
-
-  let m;
-  while ((m = masterPattern.exec(html)) !== null) {
-    const [, weekday, dateStr, time, room, title, rest] = m;
-    // Extract description from rest
-    const descMatch = rest.match(/<\/strong>\s*([\s\S]*?)(?=<\/td|<tr|$)/);
-    const desc = descMatch ? stripTags(descMatch[1]).slice(0, 300) : '';
-
-    events.push({
-      date: dateStr.trim(),
-      weekday: weekday.trim(),
-      time: time.replace(/[–—]/g, '–').trim(),
-      room: room.trim(),
-      title: title.trim(),
-      desc: desc.trim(),
-      raw: false
-    });
-  }
-
-  // If the complex regex got nothing, fall back to a simpler title-only extraction
-  if (events.length === 0) {
-    const titleOnly = /<strong>([^<]{15,200})<\/strong>/g;
-    let t;
-    let i = 0;
-    while ((t = titleOnly.exec(html)) !== null && i < 100) {
-      const title = stripTags(t[1]);
-      if (title.length > 15 && !title.includes('©') && !title.includes('UNFCCC')) {
-        events.push({ title, raw: true });
-        i++;
-      }
+    if (titleMatch) {
+      events.push({
+        date: dateMatch ? dateMatch[2].trim() : '',
+        weekday: dateMatch ? dateMatch[1].trim() : '',
+        time: timeMatch ? timeMatch[1].replace(/[–—]/g, '–').trim() : '',
+        room: roomMatch ? roomMatch[1].trim() : timeRoom.slice(0, 30),
+        title: stripTags(titleMatch[1]),
+        orgs: orgTitle.slice(0, 150)
+      });
     }
   }
 
