@@ -596,6 +596,9 @@ async function fetchLive() {
     updateLiveBanner(newForest, all.length);
     injectLiveCards();
 
+    // Also fetch special/mandated events once
+    if (!specialsFetched) fetchSpecials();
+
     st.textContent = '✓ Updated ' + new Date().toLocaleTimeString('en-DE',{hour:'2-digit',minute:'2-digit'});
     st.className = 'fetch-status ok';
     tickTs();
@@ -801,6 +804,60 @@ async function fetchNegotiations(dayId) {
     slot.innerHTML = shDiv + '<div class="ibar red">⚠ Could not fetch (' + err.message + '). <a href="https://unfccc.int/sb64/schedule?date=' + date + '" target="_blank" style="text-decoration:underline">Open UNFCCC ↗</a></div>';
     slot.querySelector('.ibar').appendChild(retryBtn);
   }
+}
+
+let specialsFetched = false;
+let specialEvents = []; // from UNFCCC calendar
+
+async function fetchSpecials() {
+  try {
+    var r = await fetch('/api/schedule?source=specials');
+    if (!r.ok) return;
+    var data = await r.json();
+    if (data.error) return;
+    specialEvents = (data.events || []).filter(function(e) {
+      return e.isForest || FOREST_KW.some(function(kw){ return (e.title||'').toLowerCase().includes(kw); });
+    });
+    specialsFetched = true;
+    injectSpecialCards();
+  } catch(e) {
+    console.warn('Specials fetch failed:', e.message);
+  }
+}
+
+function injectSpecialCards() {
+  // Map special events to days by date string
+  DAYS.forEach(function(d) {
+    var slot = document.getElementById('live-slot-' + d.id);
+    if (!slot) return;
+    var dayStr = String(d.n);
+    var matched = specialEvents.filter(function(ev) {
+      var ds = (ev.date || '').toLowerCase();
+      return ds.includes('jun') && (ds.includes(' ' + dayStr + ' ') || ds.includes(dayStr + ' jun'));
+    });
+    if (!matched.length) return;
+
+    var existing = slot.innerHTML;
+    var cards = matched.map(function(ev) {
+      var c = document.createElement('div');
+      c.className = 'card t-mandate';
+      c.dataset.type = 'mandate';
+      c.dataset.star = '0';
+      c.onclick = function(){ this.classList.toggle('open'); };
+      c.innerHTML = (ev.time ? '<span class="ctime">' + ev.time + '</span>' : '') +
+        '<span class="ctag ct-mandate">Special event</span>' +
+        '<span class="ctag ct-star">⭐ Forest priority</span>' +
+        (ev.room ? '<span class="croom">' + ev.room + '</span>' : '') +
+        '<div class="ctitle">' + (ev.title||'') + '</div>';
+      return c.outerHTML;
+    }).join('');
+
+    if (cards) {
+      slot.innerHTML = existing +
+        '<div class="sh">Mandated &amp; special events (live from UNFCCC)</div>' +
+        '<div class="cards">' + cards + '</div>';
+    }
+  });
 }
 
 function tickTs() {
